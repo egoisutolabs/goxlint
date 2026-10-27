@@ -73,6 +73,7 @@ These packages are the public API:
 - `github.com/egoisutolabs/goxlint`
 - `github.com/egoisutolabs/goxlint/cli`
 - `github.com/egoisutolabs/goxlint/goxlinttest`
+- `github.com/egoisutolabs/goxlint/goxlintanalysis`
 
 goxlint is before v1.0.0. A release can change the public API. But each change
 to the public API must have a reason. Write the reason in the pull request,

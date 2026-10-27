@@ -24,8 +24,8 @@ Found 0 warnings and 1 error.
 Finished in 175ms on 1 file with 1 rule using 8 threads (typed mode).
 ```
 
-> **Status: v0.0.2, early release.** The API of the `goxlint`, `cli`, and
-> `goxlinttest` packages can change in each release before v1.0.0. Read the
+> **Status: v0.0.2, early release.** The API of the `goxlint`, `cli`,
+> `goxlinttest`, and `goxlintanalysis` packages can change before v1.0.0. Read the
 > release notes before you update.
 >
 > goxlint was named goose-lint in v0.0.1. Change imports from
@@ -137,14 +137,18 @@ rule:
 | Speed without types | Every run type-checks. | Syntax-only rules run without type-checking. |
 | Package rules | Yes. | Yes. |
 
-Use `go/analysis` when you want your check to run in `go vet`, gopls, or
-golangci-lint. goxlint rules cannot run there yet. Issue
-[#12](https://github.com/egoisutolabs/goxlint/issues/12) adds this.
+Use [`goxlintanalysis`](docs/go-analysis.md) to run the same rules with
+`go/analysis` drivers, such as `go vet -vettool`, `multichecker`, and a
+golangci-lint module plugin. The adapter keeps suppression comments and
+converts safe and suggestion fixes. The host controls configuration and
+output. Editor use requires a host that registers the analyzers; the adapter
+does not add them to stock gopls.
 
 ## Features
 
 | Feature          | Description                                                                                       |
 | ---------------- | ------------------------------------------------------------------------------------------------- |
+| go/analysis adapter | Run rules with existing analysis drivers. See [the adapter guide](docs/go-analysis.md). |
 | Visitor rules    | A rule registers handlers for AST node types. All rules share one walk of each file.              |
 | Package rules    | A rule can also examine all files of a package together.                                          |
 | Type information | A rule can request `go/types` data. goxlint loads types only when a rule needs them.                |
@@ -212,6 +216,7 @@ go run ./examples/goxlint ./...
 | [Fixes](docs/fixes.md)                     | Fix levels and how goxlint applies fixes.                            |
 | [Suppressions](docs/suppressions.md)       | `//goxlint:ignore` comments and unused-suppression reports.          |
 | [Testing rules](docs/testing-rules.md)     | The `goxlinttest` package.                                           |
+| [go/analysis adapter](docs/go-analysis.md) | Use rules with go vet, multichecker, and golangci-lint. |
 | [How goxlint works](docs/how-goxlint-works.md) | Loading, the walk, the package phase, and the order of operations. |
 
 ## Requirements
