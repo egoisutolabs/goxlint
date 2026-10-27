@@ -137,15 +137,15 @@ import (
 )
 
 func TestLargePackage(t *testing.T) {
-	goxlinttest.RunPackage(t, LargePackage,
-		[]goxlinttest.PackageCase{
+	goxlinttest.RunPackage(t, LargePackage, goxlinttest.PackageCases{
+		Valid: []goxlinttest.PackageCase{
 			{
 				Name:    "within limit",
 				Files:   map[string]string{"a.go": "package p"},
 				Options: map[string]int{"maxFiles": 1},
 			},
 		},
-		[]goxlinttest.PackageCase{
+		Invalid: []goxlinttest.PackageCase{
 			{
 				Name: "disabled file still counts",
 				Files: map[string]string{
@@ -159,12 +159,13 @@ func TestLargePackage(t *testing.T) {
 				},
 			},
 		},
-	)
+	})
 }
 ```
 
-`RunPackage` takes separate lists of valid and invalid cases. It uses the same
-subtest names as `Run`. Each `PackageCase` has these fields:
+`RunPackage` takes a `PackageCases` struct with `Valid` and `Invalid` lists,
+like `Run` takes `Cases`. It uses the same subtest names as `Run`. Each
+`PackageCase` has these fields:
 
 | Field | Description |
 | --- | --- |
@@ -178,6 +179,9 @@ A disabled file stays in `PackageContext.Files` with `Enabled == false`. Its
 source still participates in type-checking. File visitors do not run for that
 file, and reports from its context are ignored. A disabled file has no rule
 options. If all files are disabled, neither rule phase runs.
+
+Use a literal `nil` in `FileOptions` to disable a file. A typed nil pointer,
+such as `(*Opts)(nil)`, stays enabled and is encoded as JSON `null`.
 
 Each `PackageError` has the fields of `Error`, plus `Filename`. Fields with a
 zero value are not checked. Lines are relative to each source string in

@@ -56,20 +56,22 @@ func TestRunPackageBothPhasesAndTypes(t *testing.T) {
 					}
 				},
 			}
-			goxlinttest.RunPackage(t, rule, nil, []goxlinttest.PackageCase{{
-				Files: map[string]string{
-					"a.go":                          "func first() int { return value }\nvar value = 1\nfunc next() {}",
-					filepath.Join("nested", "b.go"): "package p\n//line virtual.go:100\nfunc second() int { return first() }",
-				},
-				Errors: []goxlinttest.PackageError{
-					{Filename: "a.go", MessageID: "found", Message: "Found file first.", Line: 1, Column: 6},
-					{Filename: "a.go", MessageID: "found", Message: "Found package first.", Line: 1, Column: 6},
-					{Filename: "a.go", Message: "Found file next.", Line: 3, Column: 6},
-					{Filename: "a.go", Message: "Found package next.", Line: 3, Column: 6},
-					{Filename: "nested/b.go", Message: "Found file second.", Line: 3, Column: 6},
-					{Filename: "nested/b.go", Message: "Found package second.", Line: 3, Column: 6},
-				},
-			}})
+			goxlinttest.RunPackage(t, rule, goxlinttest.PackageCases{
+				Invalid: []goxlinttest.PackageCase{{
+					Files: map[string]string{
+						"a.go":                          "func first() int { return value }\nvar value = 1\nfunc next() {}",
+						filepath.Join("nested", "b.go"): "package p\n//line virtual.go:100\nfunc second() int { return first() }",
+					},
+					Errors: []goxlinttest.PackageError{
+						{Filename: "a.go", MessageID: "found", Message: "Found file first.", Line: 1, Column: 6},
+						{Filename: "a.go", MessageID: "found", Message: "Found package first.", Line: 1, Column: 6},
+						{Filename: "a.go", Message: "Found file next.", Line: 3, Column: 6},
+						{Filename: "a.go", Message: "Found package next.", Line: 3, Column: 6},
+						{Filename: "nested/b.go", Message: "Found file second.", Line: 3, Column: 6},
+						{Filename: "nested/b.go", Message: "Found package second.", Line: 3, Column: 6},
+					},
+				}},
+			})
 			if packages != 1 {
 				t.Errorf("AnalyzePackage ran %d times, want 1", packages)
 			}
@@ -118,19 +120,21 @@ func TestRunPackageOptionsAndDisabledFiles(t *testing.T) {
 			}
 		},
 	}
-	goxlinttest.RunPackage(t, rule, nil, []goxlinttest.PackageCase{{
-		Files: map[string]string{
-			"a.go":        "package p\nvar _ = evidence",
-			"b.go":        "package p",
-			"disabled.go": "package p\nconst evidence = 1",
-		},
-		Options:     options{Label: "common", Count: 9},
-		FileOptions: map[string]any{"b.go": map[string]string{"label": "override"}, "disabled.go": nil},
-		Errors: []goxlinttest.PackageError{
-			{Filename: "a.go", Message: "common 9"}, {Filename: "a.go", Message: "common 9"},
-			{Filename: "b.go", Message: "override 1"}, {Filename: "b.go", Message: "override 1"},
-		},
-	}})
+	goxlinttest.RunPackage(t, rule, goxlinttest.PackageCases{
+		Invalid: []goxlinttest.PackageCase{{
+			Files: map[string]string{
+				"a.go":        "package p\nvar _ = evidence",
+				"b.go":        "package p",
+				"disabled.go": "package p\nconst evidence = 1",
+			},
+			Options:     options{Label: "common", Count: 9},
+			FileOptions: map[string]any{"b.go": map[string]string{"label": "override"}, "disabled.go": nil},
+			Errors: []goxlinttest.PackageError{
+				{Filename: "a.go", Message: "common 9"}, {Filename: "a.go", Message: "common 9"},
+				{Filename: "b.go", Message: "override 1"}, {Filename: "b.go", Message: "override 1"},
+			},
+		}},
+	})
 }
 
 func TestRunPackageSuppressions(t *testing.T) {
@@ -152,16 +156,19 @@ func TestRunPackageSuppressions(t *testing.T) {
 			}
 		},
 	}
-	goxlinttest.RunPackage(t, rule, []goxlinttest.PackageCase{{
-		Files: map[string]string{
-			"a.go": "//goxlint:ignore test/rule intended\nfunc first() {}",
-			"b.go": "//goxlint:ignore-file test/rule intended\npackage p\nfunc second() {}",
-			"c.go": "//goxlint:ignore test/rule unused suppression is not audited\nvar value = 1",
-		},
-	}}, []goxlinttest.PackageCase{{
-		Files:  map[string]string{"p.go": "//goxlint:ignore another/rule unrelated\nfunc f() {}"},
-		Errors: []goxlinttest.PackageError{{}, {}}, // Zero fields must remain unchecked.
-	}})
+	goxlinttest.RunPackage(t, rule, goxlinttest.PackageCases{
+		Valid: []goxlinttest.PackageCase{{
+			Files: map[string]string{
+				"a.go": "//goxlint:ignore test/rule intended\nfunc first() {}",
+				"b.go": "//goxlint:ignore-file test/rule intended\npackage p\nfunc second() {}",
+				"c.go": "//goxlint:ignore test/rule unused suppression is not audited\nvar value = 1",
+			},
+		}},
+		Invalid: []goxlinttest.PackageCase{{
+			Files:  map[string]string{"p.go": "//goxlint:ignore another/rule unrelated\nfunc f() {}"},
+			Errors: []goxlinttest.PackageError{{}, {}}, // Zero fields must remain unchecked.
+		}},
+	})
 }
 
 func TestRunPackageAllDisabled(t *testing.T) {
@@ -170,19 +177,23 @@ func TestRunPackageAllDisabled(t *testing.T) {
 		Create:         func(*goxlint.Context) goxlint.Visitor { t.Error("unexpected Create"); return nil },
 		AnalyzePackage: func(*goxlint.PackageContext) { t.Error("unexpected AnalyzePackage") },
 	}
-	goxlinttest.RunPackage(t, rule, []goxlinttest.PackageCase{{
-		Files: map[string]string{"p.go": "var value = 1"}, FileOptions: map[string]any{"p.go": nil},
-	}}, nil)
+	goxlinttest.RunPackage(t, rule, goxlinttest.PackageCases{
+		Valid: []goxlinttest.PackageCase{{
+			Files: map[string]string{"p.go": "var value = 1"}, FileOptions: map[string]any{"p.go": nil},
+		}},
+	})
 }
 
 func TestRunPackageUnusedImportsAndVariables(t *testing.T) {
 	t.Parallel()
-	goxlinttest.RunPackage(t, &goxlint.Rule{}, []goxlinttest.PackageCase{{
-		Files: map[string]string{
-			"a.go": "import \"strings\"\nfunc first() { unused := second() }",
-			"b.go": "func second() int { return 1 }",
-		},
-	}}, nil)
+	goxlinttest.RunPackage(t, &goxlint.Rule{}, goxlinttest.PackageCases{
+		Valid: []goxlinttest.PackageCase{{
+			Files: map[string]string{
+				"a.go": "import \"strings\"\nfunc first() { unused := second() }",
+				"b.go": "func second() int { return 1 }",
+			},
+		}},
+	})
 }
 
 func TestRunPackageFailures(t *testing.T) {
@@ -259,7 +270,9 @@ func runPackageFailure(t *testing.T, scenario string) {
 	case "count":
 		c.Errors = append(c.Errors, goxlinttest.PackageError{})
 	case "valid diagnostic":
-		goxlinttest.RunPackage(t, rule, []goxlinttest.PackageCase{c}, nil)
+		goxlinttest.RunPackage(t, rule, goxlinttest.PackageCases{
+			Valid: []goxlinttest.PackageCase{c},
+		})
 		return
 	case "no errors":
 		c.Errors = nil
@@ -295,5 +308,7 @@ func runPackageFailure(t *testing.T, scenario string) {
 	default:
 		t.Fatalf("unknown failure scenario %q", scenario)
 	}
-	goxlinttest.RunPackage(t, rule, nil, []goxlinttest.PackageCase{c})
+	goxlinttest.RunPackage(t, rule, goxlinttest.PackageCases{
+		Invalid: []goxlinttest.PackageCase{c},
+	})
 }

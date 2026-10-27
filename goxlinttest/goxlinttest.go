@@ -69,6 +69,12 @@ type Error struct {
 	Column    int
 }
 
+// PackageCases are the package inputs for one rule.
+type PackageCases struct {
+	Valid   []PackageCase
+	Invalid []PackageCase
+}
+
 // PackageCase is one package test input. Files are type-checked together.
 type PackageCase struct {
 	Name string
@@ -76,8 +82,9 @@ type PackageCase struct {
 	Files map[string]string
 	// Options are encoded to JSON and applied to every file.
 	Options any
-	// FileOptions replaces Options for the named files. A nil value disables
+	// FileOptions replaces Options for the named files. A literal nil disables
 	// the rule for that file, but keeps the file as package-analysis evidence.
+	// A typed nil pointer stays enabled and is encoded as JSON null.
 	//goxlint:ignore anti-slop/no-any-map-values JSON options accept user-defined structs or maps for each file
 	FileOptions map[string]any
 	// Errors are ordered by filename, then position. Invalid cases only.
@@ -124,16 +131,16 @@ func Run(t *testing.T, rule *goxlint.Rule, cases Cases) {
 // RunPackage tests file visitors and package analysis against multi-file cases.
 // Every case must contain at least one file. All files form one Go package,
 // even if their filenames contain different directories. Fixes are not checked.
-func RunPackage(t *testing.T, rule *goxlint.Rule, valid, invalid []PackageCase) {
+func RunPackage(t *testing.T, rule *goxlint.Rule, cases PackageCases) {
 	t.Helper()
-	for i, c := range valid {
+	for i, c := range cases.Valid {
 		t.Run(caseName("valid", i, c.Name), func(t *testing.T) {
 			t.Helper()
 			res := lintPackage(t, rule, c)
 			checkErrors(t, rule, res, nil)
 		})
 	}
-	for i, c := range invalid {
+	for i, c := range cases.Invalid {
 		t.Run(caseName("invalid", i, c.Name), func(t *testing.T) {
 			t.Helper()
 			if len(c.Errors) == 0 {
