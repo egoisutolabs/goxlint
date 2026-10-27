@@ -112,7 +112,8 @@ For more information, read [Fixes](fixes.md).
 
 Diagnostic file paths use forward slashes (`/`) on every operating system,
 including Windows. This applies to all formats. Paths within the working
-directory are relative to it. Other paths stay absolute.
+directory are relative to it. Other paths stay absolute. A directory named
+`..foo` inside the working directory also uses a relative path.
 
 ### default
 

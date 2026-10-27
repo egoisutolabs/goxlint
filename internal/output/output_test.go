@@ -17,6 +17,9 @@ func TestDiagnosticPathsUseForwardSlashes(t *testing.T) {
 	outside := filepath.Join(filepath.Dir(root), "outside", "file.go")
 	cases := []struct{ name, root, filename, want string }{
 		{"inside root", root, filepath.Join(root, "src", "nested", "file.go"), "src/nested/file.go"},
+		{"dot-dot directory", root, filepath.Join(root, "..foo", "file.go"), "..foo/file.go"},
+		{"dot-dot filename", root, filepath.Join(root, "..file.go"), "..file.go"},
+		{"parent component", filepath.Join(root, "nested"), root, filepath.ToSlash(root)},
 		{"without root", "", filepath.Join("src", "nested", "file.go"), "src/nested/file.go"},
 		{"outside root", root, outside, filepath.ToSlash(outside)},
 	}

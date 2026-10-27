@@ -161,7 +161,7 @@ func (p *Printer) path(name string) string {
 	if p.Root == "" {
 		return filepath.ToSlash(name)
 	}
-	if rel, err := filepath.Rel(p.Root, name); err == nil && !strings.HasPrefix(rel, "..") {
+	if rel, err := filepath.Rel(p.Root, name); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return filepath.ToSlash(rel)
 	}
 	return filepath.ToSlash(name)
