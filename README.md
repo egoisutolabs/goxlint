@@ -2,7 +2,6 @@
 
 [![CI](https://github.com/egoisutolabs/goxlint/actions/workflows/ci.yml/badge.svg)](https://github.com/egoisutolabs/goxlint/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/egoisutolabs/goxlint.svg)](https://pkg.go.dev/github.com/egoisutolabs/goxlint)
-[![Go Report Card](https://goreportcard.com/badge/github.com/egoisutolabs/goxlint)](https://goreportcard.com/report/github.com/egoisutolabs/goxlint)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 goxlint is an engine to build your own Go linter.
