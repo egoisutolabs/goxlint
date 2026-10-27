@@ -6,6 +6,8 @@ to set up the project, and how to send a change.
 The documents in this repository use ASD-STE100 Simplified Technical English.
 Read [Style of the documents](#style-of-the-documents).
 
+All contributors must obey the [code of conduct](CODE_OF_CONDUCT.md).
+
 ## Report a problem
 
 To report a security problem, do not open an issue. Read
