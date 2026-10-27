@@ -32,20 +32,20 @@ For example, this complete program sets a complexity limit:
 package main
 
 import (
-    "encoding/json"
+	"encoding/json"
 
-    "github.com/egoisutolabs/goxlint/examples/goxlint/plugins/maintainability"
-    "github.com/egoisutolabs/goxlint/goxlintanalysis"
-    "golang.org/x/tools/go/analysis/singlechecker"
+	"github.com/egoisutolabs/goxlint/examples/goxlint/plugins/maintainability"
+	"github.com/egoisutolabs/goxlint/goxlintanalysis"
+	"golang.org/x/tools/go/analysis/singlechecker"
 )
 
 func main() {
-    analyzer := goxlintanalysis.Analyzer(
-        "maintainability",
-        maintainability.CyclomaticComplexity,
-        goxlintanalysis.WithOptions(json.RawMessage(`{"max": 12}`)),
-    )
-    singlechecker.Main(analyzer)
+	analyzer := goxlintanalysis.Analyzer(
+		"maintainability",
+		maintainability.CyclomaticComplexity,
+		goxlintanalysis.WithOptions(json.RawMessage(`{"max": 12}`)),
+	)
+	singlechecker.Main(analyzer)
 }
 ```
 
@@ -66,13 +66,13 @@ own plugins when you build a linter for your project.
     package main
 
     import (
-        "github.com/egoisutolabs/goxlint/examples/goxlint/plugins/antislop"
-        "github.com/egoisutolabs/goxlint/goxlintanalysis"
-        "golang.org/x/tools/go/analysis/multichecker"
+    	"github.com/egoisutolabs/goxlint/examples/goxlint/plugins/antislop"
+    	"github.com/egoisutolabs/goxlint/goxlintanalysis"
+    	"golang.org/x/tools/go/analysis/multichecker"
     )
 
     func main() {
-        multichecker.Main(goxlintanalysis.Analyzers(antislop.Plugin)...)
+    	multichecker.Main(goxlintanalysis.Analyzers(antislop.Plugin)...)
     }
     ```
 
@@ -114,28 +114,28 @@ belongs to your plugin module, not to goxlint.
     package gclplugin
 
     import (
-        "github.com/egoisutolabs/goxlint/examples/goxlint/plugins/antislop"
-        "github.com/egoisutolabs/goxlint/goxlintanalysis"
-        "github.com/golangci/plugin-module-register/register"
-        "golang.org/x/tools/go/analysis"
+    	"github.com/egoisutolabs/goxlint/examples/goxlint/plugins/antislop"
+    	"github.com/egoisutolabs/goxlint/goxlintanalysis"
+    	"github.com/golangci/plugin-module-register/register"
+    	"golang.org/x/tools/go/analysis"
     )
 
     func init() {
-        register.Plugin("project-rules", newPlugin)
+    	register.Plugin("project-rules", newPlugin)
     }
 
     func newPlugin(_ any) (register.LinterPlugin, error) {
-        return plugin{}, nil
+    	return plugin{}, nil
     }
 
     type plugin struct{}
 
     func (plugin) BuildAnalyzers() ([]*analysis.Analyzer, error) {
-        return goxlintanalysis.Analyzers(antislop.Plugin), nil
+    	return goxlintanalysis.Analyzers(antislop.Plugin), nil
     }
 
     func (plugin) GetLoadMode() string {
-        return register.LoadModeTypesInfo
+    	return register.LoadModeTypesInfo
     }
     ```
 

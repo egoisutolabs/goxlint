@@ -146,17 +146,17 @@ does not add them to stock gopls.
 
 ## Features
 
-| Feature          | Description                                                                                       |
-| ---------------- | ------------------------------------------------------------------------------------------------- |
-| go/analysis adapter | Run rules with existing analysis drivers. See [the adapter guide](docs/go-analysis.md). |
-| Visitor rules    | A rule registers handlers for AST node types. All rules share one walk of each file.              |
-| Package rules    | A rule can also examine all files of a package together.                                          |
-| Type information | A rule can request `go/types` data. goxlint loads types only when a rule needs them.                |
-| Configuration    | A `.goxlintrc.json` file sets severities, rule options, ignore patterns, and per-file overrides.    |
-| Fixes            | A rule can attach a fix. Fixes have three levels: safe, suggestion, and dangerous.                |
-| Suppressions     | `//goxlint:ignore` comments disable a rule for a line or a file. goxlint reports unused suppressions. |
-| Output           | Code frames for people. Also `unix`, `json`, and `github` formats for tools and CI.               |
-| Rule tests       | The `goxlinttest` package tests a rule with valid and invalid code samples.                         |
+| Feature             | Description                                                                                           |
+| ------------------- | ----------------------------------------------------------------------------------------------------- |
+| Visitor rules       | A rule registers handlers for AST node types. All rules share one walk of each file.                  |
+| Package rules       | A rule can also examine all files of a package together.                                              |
+| Type information    | A rule can request `go/types` data. goxlint loads types only when a rule needs them.                  |
+| Configuration       | A `.goxlintrc.json` file sets severities, rule options, ignore patterns, and per-file overrides.      |
+| Fixes               | A rule can attach a fix. Fixes have three levels: safe, suggestion, and dangerous.                    |
+| Suppressions        | `//goxlint:ignore` comments disable a rule for a line or a file. goxlint reports unused suppressions. |
+| Output              | Code frames for people. Also `unix`, `json`, and `github` formats for tools and CI.                   |
+| Rule tests          | The `goxlinttest` package tests a rule with valid and invalid code samples.                           |
+| go/analysis adapter | Run rules with existing analysis drivers. See [the adapter guide](docs/go-analysis.md).               |
 
 ## Quick start
 
