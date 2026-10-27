@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/goxlint-mascot.png" alt="The goxlint mascot, a blue oxpecker that cleans itself with a lint roller" width="200">
+</p>
+
 # goxlint
 
 [![CI](https://github.com/egoisutolabs/goxlint/actions/workflows/ci.yml/badge.svg)](https://github.com/egoisutolabs/goxlint/actions/workflows/ci.yml)
