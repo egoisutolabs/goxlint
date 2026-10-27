@@ -130,6 +130,9 @@ go run ./examples/goxlint ./...
 - In the description, write what changed and why. Refer to the issue, for
   example `Fixes #4`.
 - Keep the commit history clean. We can squash the commits when we merge.
+- If your pull request has a small merge conflict with `main`, you do not
+  have to rebase. The maintainers fix small conflicts before they merge. For a
+  large conflict, we ask you to rebase.
 
 ## Style of the documents
 
