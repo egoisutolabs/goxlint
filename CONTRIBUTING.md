@@ -117,6 +117,10 @@ go test -race ./...
 go run ./examples/goxlint ./...
 ```
 
+CI runs these checks on Linux, macOS, and Windows. It reads the Go version
+from `go.mod`. Go source files and fix expectations use LF line endings on all
+three systems, as set in `.gitattributes`.
+
 - `gofmt -l .` must show no files.
 - goxlint lints its own code with the example linter. The run must show no
   diagnostics. If a diagnostic is not correct, add a `//goxlint:ignore`

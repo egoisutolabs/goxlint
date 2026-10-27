@@ -92,6 +92,10 @@ For more information, read [Fixes](fixes.md).
 
 ## Output formats
 
+Diagnostic file paths use forward slashes (`/`) on every operating system,
+including Windows. This applies to all formats. Paths within the working
+directory are relative to it. Other paths stay absolute.
+
 ### default
 
 The `default` format shows a code frame for each diagnostic. Then it shows a

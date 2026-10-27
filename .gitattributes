@@ -1,0 +1,3 @@
+# Keep Go sources and fix expectations identical on every operating system.
+*.go text eol=lf
+*.go.golden text eol=lf

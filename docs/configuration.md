@@ -108,6 +108,9 @@ type-check an ignored file as part of its package.
 
 The pattern syntax:
 
+- Use `/` between path segments, also on Windows. This applies to
+  `ignorePatterns` and override `files` patterns. Paths are relative to the
+  directory that contains the configuration file.
 - `**` agrees with zero or more path segments.
 - `*`, `?`, and `[...]` have the same meaning as in Go's `path.Match`.
 - A pattern that ends with `/**` also agrees with the directory itself.

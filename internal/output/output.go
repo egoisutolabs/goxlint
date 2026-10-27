@@ -159,12 +159,12 @@ func displayWidth(s string) int {
 
 func (p *Printer) path(name string) string {
 	if p.Root == "" {
-		return name
+		return filepath.ToSlash(name)
 	}
 	if rel, err := filepath.Rel(p.Root, name); err == nil && !strings.HasPrefix(rel, "..") {
-		return rel
+		return filepath.ToSlash(rel)
 	}
-	return name
+	return filepath.ToSlash(name)
 }
 
 func capitalize(s string) string {

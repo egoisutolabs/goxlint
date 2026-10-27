@@ -484,3 +484,62 @@ func TestFixPassSkipsNewlyIncompletePackages(t *testing.T) {
 		}
 	}
 }
+
+func TestSlashPathsAndPatterns(t *testing.T) {
+	for _, typed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("typed=%t", typed), func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			writeTestFile(t, "go.mod", "module example.com/test\n\ngo 1.26.0\n")
+			for _, dir := range []string{"project/src", "project/generated/nested"} {
+				if err := os.MkdirAll(filepath.FromSlash(dir), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			configPath := filepath.Join("project", ".goxlintrc.json")
+			writeTestFile(t, configPath, `{
+				"rules":{"test/rename":"error"},
+				"ignorePatterns":["generated/**", "src/ignored.go"],
+				"overrides":[{"files":["src/**/skip.go"],"rules":{"test/rename":"off"}}]
+			}`)
+			// CRLF input must retain the same physical line and column.
+			writeTestFile(t, filepath.Join("project", "src", "report.go"), "package p\r\nvar bad = 1\r\n")
+			writeTestFile(t, filepath.Join("project", "src", "skip.go"), "package p\nfunc skip(bad int) {}\n")
+			writeTestFile(t, filepath.Join("project", "src", "ignored.go"), "package p\nfunc ignored(bad int) {}\n")
+			writeTestFile(t, filepath.Join("project", "generated", "nested", "file.go"), "package generated\nvar bad = 1\n")
+			for _, format := range []string{"unix", "json", "github"} {
+				t.Run(format, func(t *testing.T) {
+					var stdout, stderr bytes.Buffer
+					code := Run([]string{"-c", configPath, "--format=" + format, "./project/..."}, &stdout, &stderr, testPlugin(typed))
+					if code != 1 || stderr.Len() != 0 {
+						t.Fatalf("unexpected result: exit %d: %s", code, &stderr)
+					}
+					if strings.Count(stdout.String(), "rename bad") != 1 {
+						t.Fatalf("ignore or override did not match: %s", &stdout)
+					}
+					const name = "project/src/report.go"
+					switch format {
+					case "json":
+						var diags []struct {
+							File         string
+							Line, Column int
+						}
+						if err := json.Unmarshal(stdout.Bytes(), &diags); err != nil {
+							t.Fatal(err)
+						}
+						if len(diags) != 1 || diags[0].File != name || diags[0].Line != 2 || diags[0].Column != 5 {
+							t.Fatalf("wrong path or position: %s", &stdout)
+						}
+					case "unix":
+						if !strings.HasPrefix(stdout.String(), name+":2:5:") {
+							t.Fatalf("wrong unix path or position: %s", &stdout)
+						}
+					case "github":
+						if !strings.HasPrefix(stdout.String(), "::error file="+name+",line=2,endLine=2,col=5,") {
+							t.Fatalf("wrong annotation path or position: %s", &stdout)
+						}
+					}
+				})
+			}
+		})
+	}
+}
