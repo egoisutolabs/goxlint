@@ -26,7 +26,7 @@ func LintAll(files []File, rulesFor func(filename string) []ConfiguredRule, opts
 		lintPackage(files, groups[i], rules, out, fileOpts)
 	})
 	parallel(len(files), func(i int) {
-		out[i] = finish(files[i], out[i], fileOpts[i])
+		out[i] = finish(files[i], out[i], rules[i], fileOpts[i])
 	})
 	return out
 }

@@ -63,28 +63,39 @@ line where the diagnostic starts.
 
 ## Unused suppressions
 
-goxlint reports a target that suppresses no diagnostic. The report has the rule
-ID `goxlint/unused-suppression` and points to the target in the comment.
+goxlint reports stale, unknown, and redundant suppression targets. The report
+has the rule ID `goxlint/unused-suppression` and points to the target in the
+comment.
 
 ```go
 //goxlint:ignore acme/no-foo,acme/no-bar Existing exception.
 foo()
 ```
 
-If only `acme/no-foo` reports a diagnostic on `foo()`, goxlint reports
-`acme/no-bar` as unused.
+If both rules are enabled but only `acme/no-foo` reports a diagnostic on
+`foo()`, goxlint reports `acme/no-bar` as unused.
 
 These targets are unused:
 
-- A target for a rule that reported nothing on the lines.
+- A target for an enabled rule that reported nothing on the lines.
 - A target with a spelling error, or a target for a rule that does not exist.
-- A target for a rule that is off for the file. goxlint examines the rules that
-  are enabled for each file, after overrides and command-line flags.
 - A redundant target. When two directives or two targets agree with the same
   diagnostic, the first directive in the file gets the credit. In that
   directive, the first agreeing target gets the credit.
 
-One target can suppress more than one diagnostic.
+A target for a registered rule that is off for the file is kept, unless it is
+redundant. A plugin target is also kept when the plugin has registered rules
+and all of them are off for the file. This uses the configuration after
+per-file overrides and command-line flags. Thus an exception for an opt-in
+rule can stay in the source during runs that do not enable that rule.
+
+For a disabled target, earlier targets must cover every rule it names across
+its full scope before it counts as redundant. A partial overlap between two
+line directives does not make the later directive redundant.
+
+The `*` target still needs to suppress a diagnostic, even when no rules are
+enabled. Unknown rule or plugin names are still reported. One target can
+suppress more than one diagnostic.
 
 ### Set the severity
 

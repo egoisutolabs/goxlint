@@ -258,8 +258,8 @@ func TestUnusedSuppressionReporting(t *testing.T) {
 		{name: "deny warnings", args: []string{"--deny-warnings"}, code: 1, severity: "warning"},
 		{name: "max warnings", args: []string{"--max-warnings=0"}, code: 1, severity: "warning"},
 		{name: "quiet", args: []string{"--quiet", "--deny-warnings"}, code: 1, severity: "warning", quiet: true},
-		{name: "disabled rule", args: []string{"-A", "test/rename"}, severity: "warning"},
-		{name: "file override", config: `,"overrides":[{"files":["example.go"],"rules":{"test/rename":"off"}}]`, severity: "warning"},
+		{name: "disabled rule", args: []string{"-A", "test/rename"}},
+		{name: "file override", config: `,"overrides":[{"files":["example.go"],"rules":{"test/rename":"off"}}]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Chdir(t.TempDir())
@@ -874,5 +874,80 @@ func TestInvalidFixReportsPhysicalPosition(t *testing.T) {
 	}
 	if got, err := os.ReadFile("example.go"); err != nil || string(got) != source {
 		t.Fatalf("invalid fix changed source: %q: %v", got, err)
+	}
+}
+
+func TestSuppressionTargetsForDisabledRules(t *testing.T) {
+	for _, tc := range []struct {
+		name, config, target, identifier string
+		args                             []string
+		unused                           int
+	}{
+		{name: "opt-in rule off", config: `{}`, target: "test/rename", identifier: "bad"},
+		{name: "opt-in plugin off", config: `{}`, target: "test", identifier: "bad"},
+		{name: "config off", config: `{"rules":{"test/rename":"off"}}`, target: "test/rename", identifier: "bad"},
+		{name: "flag off", config: `{"rules":{"test/rename":"error"}}`, target: "test/rename", identifier: "bad", args: []string{"-A", "test/rename"}},
+		{name: "flag disables plugin", config: `{"rules":{"test/rename":"error"}}`, target: "test", identifier: "bad", args: []string{"-A", "test/rename"}},
+		{name: "rule typo", config: `{}`, target: "test/renmae", identifier: "bad", unused: 1},
+		{name: "plugin typo", config: `{}`, target: "tset", identifier: "bad", unused: 1},
+		{name: "enabled stale rule", config: `{"rules":{"test/rename":"error"}}`, target: "test/rename", identifier: "good", unused: 1},
+		{name: "partly enabled plugin", config: `{"rules":{"test/other":"warn"}}`, target: "test", identifier: "good", unused: 1},
+		{name: "off rule in active plugin", config: `{"rules":{"test/other":"warn"}}`, target: "test/rename", identifier: "good"},
+		{name: "flag enables used rule", config: `{}`, target: "test/rename", identifier: "bad", args: []string{"-W", "test/rename"}},
+		{name: "flag enables stale rule", config: `{}`, target: "test/rename", identifier: "good", args: []string{"-W", "test/rename"}, unused: 1},
+		{name: "redundant disabled target", config: `{}`, target: "test/rename,test/rename", identifier: "good", unused: 1},
+		{name: "wildcard with no enabled rules", config: `{}`, target: "*", identifier: "good", unused: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			writeTestFile(t, ".goxlintrc.json", tc.config)
+			writeTestFile(t, "example.go", "package p\n//goxlint:ignore "+tc.target+" reason\nvar "+tc.identifier+" = 1\n")
+			plugin := testPlugin(false)
+			plugin.Rules[0].Meta.Category = goxlint.Pedantic
+			plugin.Rules = append(plugin.Rules, &goxlint.Rule{Meta: goxlint.Meta{Name: "other", Category: goxlint.Pedantic}})
+			var stdout, stderr bytes.Buffer
+			args := append([]string{"--format=json", "--deny-warnings", "example.go"}, tc.args...)
+			wantCode := 0
+			if tc.unused > 0 {
+				wantCode = 1
+			}
+			if code := Run(args, &stdout, &stderr, plugin); code != wantCode || stderr.Len() != 0 {
+				t.Fatalf("want exit %d, got %d: %s; %s", wantCode, code, &stdout, &stderr)
+			}
+			var diags []struct{ Rule string }
+			if err := json.Unmarshal(stdout.Bytes(), &diags); err != nil {
+				t.Fatal(err)
+			}
+			if len(diags) != tc.unused {
+				t.Fatalf("want %d unused targets, got %s", tc.unused, &stdout)
+			}
+			for _, d := range diags {
+				if d.Rule != "goxlint/unused-suppression" {
+					t.Fatalf("unexpected diagnostic: %+v", d)
+				}
+			}
+		})
+	}
+}
+
+func TestUnusedSuppressionsFollowFileOverrides(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeTestFile(t, ".goxlintrc.json", `{
+		"rules":{"test/rename":"error"},
+		"overrides":[{"files":["a.go"],"rules":{"test/rename":"off"}}]
+	}`)
+	for _, name := range []string{"a.go", "b.go"} {
+		writeTestFile(t, name, "//goxlint:ignore-file test/rename optional check\npackage p\n")
+	}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--format=json", "--deny-warnings", "."}, &stdout, &stderr, testPlugin(false)); code != 1 || stderr.Len() != 0 {
+		t.Fatalf("unexpected result: exit %d: %s; %s", code, &stdout, &stderr)
+	}
+	var diags []struct{ Rule, File string }
+	if err := json.Unmarshal(stdout.Bytes(), &diags); err != nil {
+		t.Fatal(err)
+	}
+	if len(diags) != 1 || diags[0].Rule != "goxlint/unused-suppression" || diags[0].File != "b.go" {
+		t.Fatalf("audit did not use each file's enabled rules: %s", &stdout)
 	}
 }

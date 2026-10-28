@@ -111,7 +111,9 @@ run at the same time. Read [Package rules](package-rules.md).
 ## 6. Suppressions
 
 goxlint applies suppressions to the diagnostics of both phases together. Then it
-adds unused-suppression reports. Read [Suppressions](suppressions.md).
+adds unused-suppression reports. The audit uses the registered rule IDs and
+the rules enabled for each file. Non-redundant targets for registered rules
+that are off for the file are kept. Read [Suppressions](suppressions.md).
 
 ## 7. Fixes
 

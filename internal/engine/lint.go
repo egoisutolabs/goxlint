@@ -60,6 +60,10 @@ type Diagnostic struct {
 // LintOptions controls engine diagnostics independently of plugin rules.
 // The zero value disables unused-suppression reporting for isolated rule tests.
 type LintOptions struct {
+	// KnownRules contains registered rule IDs. True entries let the suppression
+	// audit retain targets for rules disabled in a file. Nil keeps the legacy
+	// audit behavior. The caller must not mutate this map while linting.
+	KnownRules map[string]bool
 	// SinglePackage treats all input files as one package, as in an analysis.Pass.
 	SinglePackage            bool
 	ReportUnusedSuppressions Severity
@@ -269,14 +273,14 @@ func internalError(f File, cr *ConfiguredRule, err error) Diagnostic {
 	}
 }
 
-func finish(f File, diags []Diagnostic, opts LintOptions) []Diagnostic {
+func finish(f File, diags []Diagnostic, rules []ConfiguredRule, opts LintOptions) []Diagnostic {
 	for _, d := range diags {
 		if d.internal {
 			opts.ReportUnusedSuppressions = Off
 			break
 		}
 	}
-	diags = applySuppressions(f, diags, opts.ReportUnusedSuppressions)
+	diags = applySuppressions(f, diags, rules, opts)
 	sort.SliceStable(diags, func(i, j int) bool {
 		a, b := diags[i].Start, diags[j].Start
 		if a.Line != b.Line {

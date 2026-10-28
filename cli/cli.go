@@ -168,7 +168,11 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 
 	start := time.Now()
 	files, loadErrs := engine.Load(opts)
-	lintOpts := engine.LintOptions{ReportUnusedSuppressions: resolved.ReportUnusedSuppressions}
+	knownRules := make(map[string]bool, len(reg.IDs))
+	for _, id := range reg.IDs {
+		knownRules[id] = true
+	}
+	lintOpts := engine.LintOptions{ReportUnusedSuppressions: resolved.ReportUnusedSuppressions, KnownRules: knownRules}
 	results := engine.LintAll(files, rulesFor, lintOpts)
 
 	fixFailed := false

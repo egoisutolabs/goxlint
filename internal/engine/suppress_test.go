@@ -129,3 +129,103 @@ func TestUnusedSuppressionsAcrossRules(t *testing.T) {
 		t.Fatalf("both targets should be used: %+v", diags)
 	}
 }
+
+func TestSuppressionsForKnownDisabledRules(t *testing.T) {
+	known := map[string]bool{"t/ident": true, "t/stmt": true, "other/ident": true, "t/unregistered": false}
+	for _, tc := range []struct {
+		name, body                   string
+		enabled, explicitOff, legacy bool
+		unused                       []string
+	}{
+		{name: "disabled rule", body: "//goxlint:ignore t/ident\nvar bad = 1"},
+		{name: "explicit off severity", body: "//goxlint:ignore t/ident\nvar bad = 1", explicitOff: true},
+		{name: "disabled plugin", body: "//goxlint:ignore-file t\nvar bad = 1"},
+		{name: "different plugin off", body: "//goxlint:ignore other\nvar good = 1", enabled: true},
+		{name: "disabled rule in active plugin", body: "//goxlint:ignore t/stmt\nvar good = 1", enabled: true},
+		{name: "unknown rule", body: "//goxlint:ignore t/typo\nvar good = 1", unused: []string{"t/typo"}},
+		{name: "false registration", body: "//goxlint:ignore t/unregistered\nvar good = 1", unused: []string{"t/unregistered"}},
+		{name: "unknown plugin", body: "//goxlint:ignore typo\nvar good = 1", unused: []string{"typo"}},
+		{name: "enabled stale rule", body: "//goxlint:ignore t/ident\nvar good = 1", enabled: true, unused: []string{"t/ident"}},
+		{name: "partly enabled stale plugin", body: "//goxlint:ignore t\nvar good = 1", enabled: true, unused: []string{"t"}},
+		{name: "enabled used rule", body: "//goxlint:ignore t/ident\nvar bad = 1", enabled: true},
+		{name: "enabled used plugin", body: "//goxlint:ignore t\nvar bad = 1", enabled: true},
+		{name: "mixed targets", body: "//goxlint:ignore t/stmt,t/ident,t/typo\nvar bad = 1", enabled: true, unused: []string{"t/typo"}},
+		{name: "redundant enabled target", body: "//goxlint:ignore t/ident,t/ident\nvar bad = 1", enabled: true, unused: []string{"t/ident"}},
+		{name: "redundant disabled target", body: "//goxlint:ignore t/ident,t/ident\nvar good = 1", unused: []string{"t/ident"}},
+		{name: "disabled rule covered by plugin", body: "//goxlint:ignore t,t/ident\nvar good = 1", unused: []string{"t/ident"}},
+		{name: "disabled plugin covered by rules", body: "//goxlint:ignore t/ident,t/stmt,t\nvar good = 1", unused: []string{"t"}},
+		{name: "disabled plugin partly covered", body: "//goxlint:ignore t/ident,t\nvar good = 1"},
+		{name: "redundant disabled directive", body: "//goxlint:ignore-file t\n//goxlint:ignore t/ident\nvar good = 1", unused: []string{"t/ident"}},
+		{name: "partly overlapping disabled directives", body: "//goxlint:ignore t/ident\n//goxlint:ignore t/ident\nvar good = 1"},
+		{name: "line does not cover file", body: "//goxlint:ignore t\n//goxlint:ignore-file t\nvar good = 1"},
+		{name: "unused wildcard stays unused", body: "//goxlint:ignore *\nvar good = 1", unused: []string{"*"}},
+		{name: "off target does not credit wildcard", body: "//goxlint:ignore *,t/ident\nvar good = 1", unused: []string{"*", "t/ident"}},
+		{name: "used wildcard", body: "//goxlint:ignore *\nvar bad = 1", enabled: true},
+		{name: "legacy disabled rule", body: "//goxlint:ignore t/ident\nvar good = 1", legacy: true, unused: []string{"t/ident"}},
+		{name: "legacy disabled plugin", body: "//goxlint:ignore t\nvar good = 1", legacy: true, unused: []string{"t"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := suppressionFile(t, "package p\n"+tc.body+"\n")
+			var rules []ConfiguredRule
+			if tc.enabled || tc.explicitOff {
+				severity := Off
+				if tc.enabled {
+					severity = Error
+				}
+				rules = []ConfiguredRule{{ID: "t/ident", Rule: identRule, Severity: severity}}
+			}
+			opts := LintOptions{KnownRules: known, ReportUnusedSuppressions: Warn}
+			if tc.legacy {
+				opts.KnownRules = nil
+			}
+			var unused []string
+			for _, d := range LintFile(f, rules, opts) {
+				if d.RuleID != UnusedSuppressionRuleID {
+					t.Fatalf("unexpected rule diagnostic: %+v", d)
+				}
+				unused = append(unused, string(f.Source[d.Start.Offset:d.End.Offset]))
+			}
+			if !slices.Equal(unused, tc.unused) {
+				t.Fatalf("got unused %v, want %v", unused, tc.unused)
+			}
+		})
+	}
+}
+
+func TestKnownRulesWithPackageAnalysis(t *testing.T) {
+	files := []File{
+		packageFile(t, "p/off.go", "//goxlint:ignore-file t/package,t/typo\npackage p\n"),
+		packageFile(t, "p/stale.go", "//goxlint:ignore-file t/package,t/typo\npackage p\n"),
+		packageFile(t, "p/used.go", "//goxlint:ignore-file t/package,t/typo\npackage p\n"),
+	}
+	rule := &goxlint.Rule{AnalyzePackage: func(pkg *goxlint.PackageContext) {
+		for _, file := range pkg.Files {
+			if !strings.HasSuffix(file.Filename, "stale.go") {
+				file.Report(goxlint.Diagnostic{Node: file.File.Name, Message: "package finding"})
+			}
+		}
+	}}
+	known := map[string]bool{"t/package": true}
+	out := LintAll(files, func(name string) []ConfiguredRule {
+		if strings.HasSuffix(name, "off.go") {
+			return nil
+		}
+		return []ConfiguredRule{{ID: "t/package", Rule: rule, Severity: Error}}
+	}, LintOptions{KnownRules: known, ReportUnusedSuppressions: Warn})
+	for i, want := range [][]string{{"t/typo"}, {"t/package", "t/typo"}, {"t/typo"}} {
+		var got []string
+		for _, d := range out[i] {
+			if d.RuleID != UnusedSuppressionRuleID {
+				t.Fatalf("unexpected package diagnostic: %+v", d)
+			}
+			got = append(got, string(files[i].Source[d.Start.Offset:d.End.Offset]))
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: got unused %v, want %v", files[i].Filename, got, want)
+		}
+	}
+	if len(known) != 1 || !known["t/package"] {
+		t.Fatalf("linting mutated registered rules: %v", known)
+	}
+}

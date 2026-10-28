@@ -31,7 +31,7 @@ type suppressionTarget struct {
 	used     bool
 }
 
-func applySuppressions(f File, diags []Diagnostic, unusedSeverity Severity) []Diagnostic {
+func applySuppressions(f File, diags []Diagnostic, rules []ConfiguredRule, opts LintOptions) []Diagnostic {
 	var sups []suppression
 	for _, cg := range f.AST.Comments {
 		for _, c := range cg.List {
@@ -70,19 +70,23 @@ func applySuppressions(f File, diags []Diagnostic, unusedSeverity Severity) []Di
 			out = append(out, d)
 		}
 	}
-	if unusedSeverity == Off {
+	if opts.ReportUnusedSuppressions == Off {
 		return out
 	}
+	disabled := disabledSuppressionTargets(opts.KnownRules, rules)
 	// Add these after filtering so directives cannot hide their own unused targets.
-	for _, s := range sups {
-		for _, target := range s.rules {
+	for i, s := range sups {
+		for j, target := range s.rules {
 			if target.used {
+				continue
+			}
+			if target.name != "*" && disabled[target.name] && !redundantDisabledTarget(sups, i, j, opts.KnownRules) {
 				continue
 			}
 			start, end := f.Fset.PositionFor(target.pos, false), f.Fset.PositionFor(target.end, false)
 			start.Filename, end.Filename = f.Filename, f.Filename
 			out = append(out, Diagnostic{
-				RuleID: UnusedSuppressionRuleID, Severity: unusedSeverity,
+				RuleID: UnusedSuppressionRuleID, Severity: opts.ReportUnusedSuppressions,
 				Filename: f.Filename, Start: start, End: end,
 				Message: fmt.Sprintf("Unused suppression for %q: no diagnostic was suppressed.", target.name),
 				Help:    "Remove this target or correct its rule name. Suppressions are checked against the rules enabled for this file.",
@@ -90,6 +94,66 @@ func applySuppressions(f File, diags []Diagnostic, unusedSeverity Severity) []Di
 		}
 	}
 	return out
+}
+
+func disabledSuppressionTargets(known map[string]bool, rules []ConfiguredRule) map[string]bool {
+	if len(known) == 0 {
+		return nil
+	}
+	disabled := map[string]bool{}
+	for id, registered := range known {
+		if registered {
+			disabled[id] = true
+			plugin, _, _ := strings.Cut(id, "/")
+			disabled[plugin] = true
+		}
+	}
+	for _, cr := range rules {
+		if cr.Severity != Off {
+			delete(disabled, cr.ID)
+			plugin, _, _ := strings.Cut(cr.ID, "/")
+			delete(disabled, plugin)
+		}
+	}
+	return disabled
+}
+
+// A disabled target is still redundant if earlier targets cover every known
+// rule it names across its full scope. Partial line overlap is not enough.
+func redundantDisabledTarget(sups []suppression, directive, target int, known map[string]bool) bool {
+	current := sups[directive]
+	for id, registered := range known {
+		if !registered || !suppressionMatches(current.rules[target].name, id) {
+			continue
+		}
+		covered := false
+		for i, earlier := range sups[:directive+1] {
+			if earlier.line != 0 && earlier.line != current.line {
+				continue
+			}
+			targets := earlier.rules
+			if i == directive {
+				targets = targets[:target]
+			}
+			for _, previous := range targets {
+				if suppressionMatches(previous.name, id) {
+					covered = true
+					break
+				}
+			}
+			if covered {
+				break
+			}
+		}
+		if !covered {
+			return false
+		}
+	}
+	return true
+}
+
+func suppressionMatches(target, ruleID string) bool {
+	return target == "*" || target == ruleID || strings.HasPrefix(ruleID, target+"/")
 }
 
 // The first matching directive and target receives credit. Later duplicates
@@ -101,7 +165,7 @@ func suppressed(sups []suppression, ruleID string, line int) bool {
 		}
 		for i := range s.rules {
 			target := &s.rules[i]
-			if target.name == "*" || target.name == ruleID || strings.HasPrefix(ruleID, target.name+"/") {
+			if suppressionMatches(target.name, ruleID) {
 				target.used = true
 				return true
 			}
