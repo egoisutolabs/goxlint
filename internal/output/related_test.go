@@ -27,7 +27,7 @@ func TestRelatedOutput(t *testing.T) {
 			}
 			switch format {
 			case "default":
-				for _, want := range []string{"[b.go:2:5]", "[src/a #.go:2:15]", "related: Original \"bad\".", "    /* 😀é */ bad", "·              ───"} {
+				for _, want := range []string{"[b.go:2:5]", "[src/a #.go:2:15]", "related: Original \"bad\".", "related: related location\n", "    /* 😀é */ bad", "·              ───"} {
 					if !strings.Contains(out.String(), want) {
 						t.Errorf("missing %q: %s", want, &out)
 					}
@@ -50,7 +50,7 @@ func TestRelatedOutput(t *testing.T) {
 					t.Fatalf("wrong locations: %s", &out)
 				}
 				r := got[0].Related[0]
-				if r.File != "src/a #.go" || r.Line != 2 || r.Column != 15 || r.EndLine != 2 || r.EndColumn != 18 || r.Message != "Original \"bad\"." || got[0].Related[1].EndLine != 3 {
+				if r.File != "src/a #.go" || r.Line != 2 || r.Column != 15 || r.EndLine != 2 || r.EndColumn != 18 || r.Message != "Original \"bad\"." || got[0].Related[1].EndLine != 3 || got[0].Related[1].Message != "" || !strings.Contains(out.String(), `"message": ""`) {
 					t.Fatalf("wrong range: %s", &out)
 				}
 			case "sarif":

@@ -146,7 +146,11 @@ func (p *Printer) frame(d engine.Diagnostic) {
 
 	p.sourceFrame(d.Filename, d.Start, d.End, color)
 	for _, related := range d.Related {
-		fmt.Fprintf(p.W, "  %s %s\n", p.c(cyan, "related:"), related.Message)
+		message := related.Message
+		if message == "" {
+			message = "related location"
+		}
+		fmt.Fprintf(p.W, "  %s %s\n", p.c(cyan, "related:"), message)
 		p.sourceFrame(related.Filename, related.Start, related.End, cyan)
 	}
 	if d.Help != "" {

@@ -224,7 +224,8 @@ Finished in 85ms on 12 files with 4 rules using 8 threads (syntax mode).
 ```
 
 Each related location adds a code frame with a `related:` label and its
-message. These frames use the loaded source, including unsaved buffers and
+message. If the message is empty, the label is `related: related location`.
+These frames use the loaded source, including unsaved buffers and
 the source after fixes. They do not increase the diagnostic count.
 
 An error has the `×` symbol. A warning has the `⚠` symbol. goxlint uses colors
