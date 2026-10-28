@@ -144,8 +144,8 @@ Linux, macOS, and Windows.
 
 ## Status
 
-The next release is v0.1.0. goxlint needs Go 1.26 or later. Before v0.0.2 the
-module was named `goose-lint`.
+The current release is [v0.1.0](https://github.com/egoisutolabs/goxlint/releases/tag/v0.1.0).
+goxlint needs Go 1.26 or later. Before v0.0.2 the module was named `goose-lint`.
 
 [Documentation](docs/README.md) ·
 [Discussions](https://github.com/egoisutolabs/goxlint/discussions) ·
