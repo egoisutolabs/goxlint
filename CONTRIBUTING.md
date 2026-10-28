@@ -3,7 +3,7 @@
 Thank you for your help. This document tells you how to report problems, how
 to set up the project, and how to send a change.
 
-The documents in this repository use ASD-STE100 Simplified Technical English.
+The documents in `docs/` use ASD-STE100 Simplified Technical English.
 Read [Style of the documents](#style-of-the-documents).
 
 All contributors must obey the [code of conduct](CODE_OF_CONDUCT.md).
@@ -150,8 +150,10 @@ three systems, as set in `.gitattributes`.
 
 ## Style of the documents
 
-Write the documents in `docs/` and `README.md` in ASD-STE100 Simplified
-Technical English:
+Write the documents in `docs/` in ASD-STE100 Simplified Technical English.
+`README.md` is the exception: it uses clear, natural English.
+
+For the documents in `docs/`:
 
 - Write short sentences. Write one instruction in each sentence.
 - Use the active voice.

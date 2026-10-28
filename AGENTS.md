@@ -61,9 +61,12 @@ Run one package: `go test ./internal/engine -run TestName`.
 
 ## Documents
 
-- Write `docs/`, `README.md`, and other Markdown files for users in ASD-STE100
-  Simplified Technical English: short sentences, active voice, one meaning for
-  each word, numbered steps for procedures. Use the terms in `docs/README.md`.
+- Write `docs/` and other Markdown files for users in ASD-STE100 Simplified
+  Technical English: short sentences, active voice, one meaning for each word,
+  numbered steps for procedures. Use the terms in `docs/README.md`.
+- `README.md` is the exception. It uses clear, natural English with a voice.
+  Do not rewrite it in STE. Keep its claims accurate and its code samples
+  compilable.
 - Update the documents in the same change as the behavior.
 - Make sure that each Go code sample in the documents compiles.
 
