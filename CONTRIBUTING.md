@@ -41,6 +41,24 @@ you start.
 
 Small corrections, for example errors in the documents, do not need an issue.
 
+## Work on an issue
+
+1. Find an issue that you want to work on. Issues with the label
+   `good first issue` are small and have clear acceptance criteria.
+2. Write a comment on the issue to ask for it.
+3. Wait until a maintainer assigns the issue to you. Then start the work.
+
+Do not start work on an issue that is assigned to a different person. We can
+close a pull request for an issue that is not assigned to its author.
+
+If an assigned issue has no pull request and no update for 14 days, we can
+remove the assignment. Write a comment if you need more time.
+
+Issues with the label `needs-demand` are not open for work. We wait until a
+user needs the feature.
+
+Small corrections do not need an issue or an assignment.
+
 ## Set up the project
 
 You must have Go 1.26 or later.

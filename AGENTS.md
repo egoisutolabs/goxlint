@@ -72,6 +72,10 @@ Run one package: `go test ./internal/engine -run TestName`.
 
 ## Pull requests
 
+- Work only on issues that are assigned to you or to the person who runs you.
+  To ask for an issue, write a comment on it. Read
+  [Work on an issue](CONTRIBUTING.md#work-on-an-issue).
+- Do not implement issues with the label `needs-demand`.
 - Make one logical change in each pull request. Refer to the issue, for
   example `Closes #10`.
 - In the description, write what changed, why, and which checks you ran.
