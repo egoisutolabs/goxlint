@@ -1,11 +1,12 @@
 package engine_test
 
 import (
+	"go/ast"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/egoisutolabs/goxlint/examples/goxlint/plugins/antislop"
+	"github.com/egoisutolabs/goxlint"
 	"github.com/egoisutolabs/goxlint/internal/engine"
 )
 
@@ -19,12 +20,16 @@ func BenchmarkLintAllRepository(b *testing.B) {
 	if len(errs) != 0 {
 		b.Fatal(errs)
 	}
-	var rules []engine.ConfiguredRule
-	for _, rule := range antislop.Plugin.Rules {
-		if !rule.Meta.NeedsTypes {
-			rules = append(rules, engine.ConfiguredRule{ID: "anti-slop/" + rule.Meta.Name, Rule: rule, Severity: engine.Warn})
-		}
+	rule := &goxlint.Rule{
+		Create: func(ctx *goxlint.Context) goxlint.Visitor {
+			return goxlint.Visit(goxlint.On(func(n *ast.Ident) {
+				if n.Name == "err" {
+					ctx.Report(goxlint.Diagnostic{Node: n, Message: "benchmark diagnostic"})
+				}
+			}))
+		},
 	}
+	rules := []engine.ConfiguredRule{{ID: "benchmark/error-identifiers", Rule: rule, Severity: engine.Warn}}
 	rulesFor := func(string) []engine.ConfiguredRule { return rules }
 	b.ReportAllocs()
 	b.ResetTimer()

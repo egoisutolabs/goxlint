@@ -142,7 +142,8 @@ With a fix flag, the table includes all lint passes and all loads, including
 the final run after formatting. Rule times do not include loading, the shared
 AST walk outside handlers, suppression checks, output, or fix processing.
 Timing adds measurement cost only when enabled. Use it to compare rules, not
-to measure their exact CPU cost.
+to measure their exact CPU cost. Each timed handler call reads the clock twice.
+This cost can make a rule with many small handlers appear more expensive.
 
 The flag does not change stdout or exit codes. JSON and SARIF output stay
 valid. Without `--timing`, goxlint does not collect rule times.
