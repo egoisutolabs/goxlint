@@ -9,6 +9,7 @@ import (
 	"go/types"
 	"reflect"
 	"sort"
+	"time"
 
 	"golang.org/x/tools/go/ast/inspector"
 
@@ -60,6 +61,10 @@ type Diagnostic struct {
 // LintOptions controls engine diagnostics independently of plugin rules.
 // The zero value disables unused-suppression reporting for isolated rule tests.
 type LintOptions struct {
+	// Timing measures time in rule callbacks. OnTiming receives their totals
+	// once, after all workers finish. It is not called when Timing is false.
+	Timing   bool
+	OnTiming func(map[string]time.Duration)
 	// KnownRules contains registered rule IDs. True entries let the suppression
 	// audit retain targets for rules disabled in a file. Nil keeps the legacy
 	// audit behavior. The caller must not mutate this map while linting.
@@ -109,7 +114,7 @@ func LintFile(f File, rules []ConfiguredRule, opts LintOptions) []Diagnostic {
 }
 
 // lintFile collects raw diagnostics. Suppressions run only after package analysis.
-func lintFile(f File, rules []ConfiguredRule, opts LintOptions) ([]Diagnostic, LintOptions) {
+func lintFile(f File, rules []ConfiguredRule, opts LintOptions, timings map[string]time.Duration) ([]Diagnostic, LintOptions) {
 	var (
 		diags   []Diagnostic
 		stack   []ast.Node
@@ -144,12 +149,22 @@ func lintFile(f File, rules []ConfiguredRule, opts LintOptions) ([]Diagnostic, L
 			diags = append(diags, resolve(f, tokFile, cr, d))
 		}
 		ctx := goxlint.NewContext(cr.Rule, cr.ID, f.Fset, f.AST, f.Filename, f.Source, pkg, info, cr.Options, &stack, report)
+		var start time.Time
+		if timings != nil {
+			start = time.Now()
+		}
 		visitor, err := create(cr, ctx)
+		if timings != nil {
+			timings[cr.ID] += time.Since(start)
+		}
 		if err != nil {
 			diags = append(diags, internalError(f, cr, err))
 			continue
 		}
 		for _, h := range visitor {
+			if timings != nil {
+				h.Fn = timedHandler(h.Fn, cr.ID, timings)
+			}
 			if h.NodeType.Kind() == reflect.Interface {
 				ifaces = append(ifaces, ifaceHandler{handler{rule: cr, fn: h.Fn}, h.NodeType, h.Exit})
 				continue

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/egoisutolabs/goxlint"
 )
@@ -17,17 +18,40 @@ func LintAll(files []File, rulesFor func(filename string) []ConfiguredRule, opts
 	out := make([][]Diagnostic, len(files))
 	rules := make([][]ConfiguredRule, len(files))
 	fileOpts := make([]LintOptions, len(files))
-	parallel(len(files), func(i int) {
-		rules[i] = rulesFor(files[i].Filename)
-		out[i], fileOpts[i] = lintFile(files[i], rules[i], opts)
-	})
 	groups := packageGroups(files, opts.SinglePackage)
+	var timings []map[string]time.Duration
+	if opts.Timing {
+		timings = make([]map[string]time.Duration, len(files)+len(groups))
+	}
+	parallel(len(files), func(i int) {
+		var measured map[string]time.Duration
+		if opts.Timing {
+			measured = make(map[string]time.Duration)
+			timings[i] = measured
+		}
+		rules[i] = rulesFor(files[i].Filename)
+		out[i], fileOpts[i] = lintFile(files[i], rules[i], opts, measured)
+	})
 	parallel(len(groups), func(i int) {
-		lintPackage(files, groups[i], rules, out, fileOpts)
+		var measured map[string]time.Duration
+		if opts.Timing {
+			measured = make(map[string]time.Duration)
+			timings[len(files)+i] = measured
+		}
+		lintPackage(files, groups[i], rules, out, fileOpts, measured)
 	})
 	parallel(len(files), func(i int) {
 		out[i] = finish(files[i], out[i], rules[i], fileOpts[i])
 	})
+	if opts.Timing && opts.OnTiming != nil {
+		totals := make(map[string]time.Duration)
+		for _, measured := range timings {
+			for id, elapsed := range measured {
+				totals[id] += elapsed
+			}
+		}
+		opts.OnTiming(totals)
+	}
 	return out
 }
 
@@ -56,7 +80,7 @@ func packageGroups(files []File, singlePackage bool) [][]int {
 	return groups
 }
 
-func lintPackage(files []File, group []int, rules [][]ConfiguredRule, out [][]Diagnostic, opts []LintOptions) {
+func lintPackage(files []File, group []int, rules [][]ConfiguredRule, out [][]Diagnostic, opts []LintOptions, timings map[string]time.Duration) {
 	byID := map[string]ConfiguredRule{}
 	var ids []string
 	for _, i := range group {
@@ -113,7 +137,15 @@ func lintPackage(files []File, group []int, rules [][]ConfiguredRule, out [][]Di
 			contexts[j] = ctx
 		}
 		ctx := &goxlint.PackageContext{Name: files[group[0]].AST.Name.Name, Files: contexts}
-		if err := analyzePackage(cr.Rule, ctx); err != nil {
+		var start time.Time
+		if timings != nil {
+			start = time.Now()
+		}
+		err := analyzePackage(cr.Rule, ctx)
+		if timings != nil {
+			timings[id] += time.Since(start)
+		}
+		if err != nil {
 			i := group[firstEnabled]
 			out[i] = append(out[i], internalError(files[i], &cr, err))
 			disableSuppressionAudit(group, opts)

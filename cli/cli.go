@@ -90,6 +90,7 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 		fix          = fs.Bool("fix", false, "apply safe fixes")
 		fixSuggest   = fs.Bool("fix-suggestions", false, "apply safe and suggested fixes")
 		fixDangerous = fs.Bool("fix-dangerously", false, "apply all fixes, including dangerous ones")
+		timing       = fs.Bool("timing", false, "show the 10 slowest rules and load time on stderr")
 		quiet        = fs.Bool("quiet", false, "report errors only")
 		denyWarnings = fs.Bool("deny-warnings", false, "exit with 1 when there are warnings")
 		maxWarnings  = fs.Int("max-warnings", -1, "exit with 1 when warnings exceed this number")
@@ -167,12 +168,32 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 	rulesFor := func(name string) []engine.ConfiguredRule { return resolved.RulesFor(name, reg) }
 
 	start := time.Now()
-	files, loadErrs := engine.Load(opts)
+	var loadTime time.Duration
+	load := func() ([]engine.File, []error) {
+		if !*timing {
+			return engine.Load(opts)
+		}
+		start := time.Now()
+		files, errs := engine.Load(opts)
+		loadTime += time.Since(start)
+		return files, errs
+	}
+	files, loadErrs := load()
 	knownRules := make(map[string]bool, len(reg.IDs))
 	for _, id := range reg.IDs {
 		knownRules[id] = true
 	}
 	lintOpts := engine.LintOptions{ReportUnusedSuppressions: resolved.ReportUnusedSuppressions, KnownRules: knownRules}
+	var ruleTimes map[string]time.Duration
+	if *timing {
+		ruleTimes = make(map[string]time.Duration)
+		lintOpts.Timing = true
+		lintOpts.OnTiming = func(measured map[string]time.Duration) {
+			for id, elapsed := range measured {
+				ruleTimes[id] += elapsed
+			}
+		}
+	}
 	results := engine.LintAll(files, rulesFor, lintOpts)
 
 	fixFailed := false
@@ -217,7 +238,7 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 			}
 			fixed += appliedInPass
 			passes++
-			files, loadErrs = engine.Load(opts)
+			files, loadErrs = load()
 			results = engine.LintAll(files, rulesFor, lintOpts)
 		}
 		formatted := false
@@ -241,7 +262,7 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 			formatted = true
 		}
 		if formatted {
-			files, loadErrs = engine.Load(opts)
+			files, loadErrs = load()
 			results = engine.LintAll(files, rulesFor, lintOpts)
 		}
 		if fixed > 0 {
@@ -309,6 +330,10 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 		fmt.Fprintf(stdout, "\nFound %d warning%s and %d error%s.\nFinished in %s on %d file%s with %d rule%s using %d threads (%s mode).\n",
 			warnings, plural(warnings), errs, plural(errs), time.Since(start).Round(time.Millisecond),
 			len(files), plural(len(files)), ruleCount, plural(ruleCount), runtime.GOMAXPROCS(0), mode(typed))
+	}
+
+	if *timing {
+		printTiming(stderr, ruleTimes, loadTime, typed)
 	}
 
 	switch {

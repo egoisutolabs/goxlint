@@ -104,9 +104,48 @@ For more information, read [Fixes](fixes.md).
 | Flag | Value | Action |
 | --- | --- | --- |
 | `--format` | `default`, `unix`, `json`, `github`, `sarif` | Select the output format. The default is `default`. |
+| `--timing` | | Show the 10 slowest rules and load time on stderr. |
 | `--quiet` | | Do not show warnings. goxlint still counts them. |
 | `--deny-warnings` | | Exit with `1` when there are warnings. |
 | `--max-warnings` | number | Exit with `1` when the number of warnings is more than this number. |
+
+## Rule timing
+
+Use `--timing` to find expensive rules:
+
+```sh
+goxlint --timing ./...
+goxlint --format json --timing ./... > results.json
+```
+
+After the normal output, goxlint writes a table to stderr. It shows up to 10
+rules, in order from most time to least time. Rules with equal times are in
+rule ID order. Load time is on a separate row:
+
+```text
+Rule                          Time (ms)   Relative
+acme/no-duplicate-functions    412.3       61.2%
+acme/no-println                98.1        14.6%
+Load (typed mode)             2310.0
+```
+
+A rule's time includes its `Create` calls, entry and exit handlers, and
+`AnalyzePackage` calls. This includes calls that panic. Rules that do not run
+have no row. `--quiet` and suppressions do not remove rule time from the table.
+
+Times are elapsed durations summed across goroutines. They include time spent
+waiting and are not CPU measurements. The sum can exceed the run's wall time.
+The `Relative` column divides a rule's time by the time of all rules that ran,
+including rules below the first 10. Load time is not in this percentage.
+
+With a fix flag, the table includes all lint passes and all loads, including
+the final run after formatting. Rule times do not include loading, the shared
+AST walk outside handlers, suppression checks, output, or fix processing.
+Timing adds measurement cost only when enabled. Use it to compare rules, not
+to measure their exact CPU cost.
+
+The flag does not change stdout or exit codes. JSON and SARIF output stay
+valid. Without `--timing`, goxlint does not collect rule times.
 
 ## Output formats
 

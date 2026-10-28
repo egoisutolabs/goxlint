@@ -145,6 +145,12 @@ suppression comments.
 
 ## Performance
 
+Use [`--timing`](cli.md#rule-timing) to find expensive rules. The engine records
+callback durations in a separate map for each file or package worker. After
+the workers finish, it sums the maps by rule ID. The CLI adds the totals from
+all lint passes and shows load time separately. Normal runs do not install
+handler timers.
+
 - Keep rules in syntax mode when possible. Typed mode type-checks all
   dependencies.
 - Register concrete node types, not interface types.
