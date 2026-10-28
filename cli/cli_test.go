@@ -855,3 +855,24 @@ func TestFixFormatsAtPassLimit(t *testing.T) {
 		t.Fatalf("unexpected pass-limit summary: %s", &stderr)
 	}
 }
+
+func TestInvalidFixReportsPhysicalPosition(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeTestFile(t, ".goxlintrc.json", `{"categories":{"correctness":"error"}}`)
+	const source = "package p\n\n//line template.tmpl:100\nvar value = 1\n"
+	writeTestFile(t, "example.go", source)
+	plugin := goxlint.Plugin{Name: "test", Rules: []*goxlint.Rule{
+		expressionFixRule("invalid", map[string]string{"1": ")"}, goxlint.FixSafe),
+	}}
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"--fix", "--format=json", "example.go"}, &stdout, &stderr, plugin)
+	if code != 2 || !strings.Contains(stderr.String(), "test/invalid") {
+		t.Fatalf("want rejected fix, got exit %d: %s", code, &stderr)
+	}
+	if !strings.Contains(stderr.String(), "example.go:4:13:") || strings.Contains(stderr.String(), "template.tmpl") {
+		t.Fatalf("rejected fix did not report the physical position: %s", &stderr)
+	}
+	if got, err := os.ReadFile("example.go"); err != nil || string(got) != source {
+		t.Fatalf("invalid fix changed source: %q: %v", got, err)
+	}
+}

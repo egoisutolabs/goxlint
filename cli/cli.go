@@ -19,6 +19,7 @@ import (
 	"fmt"
 	goformat "go/format"
 	"go/parser"
+	"go/scanner"
 	"go/token"
 	"io"
 	"maps"
@@ -196,7 +197,7 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 				}
 				ids := fixRuleIDs(applied)
 				// Validate each pass before writing, but leave formatting until the end.
-				if _, err := parser.ParseFile(token.NewFileSet(), f.Filename, src, parser.ParseComments|parser.SkipObjectResolution); err != nil {
+				if err := validateFixedSource(f.Filename, src); err != nil {
 					reportInvalidFix(stderr, f.Filename, ids, err)
 					state.rejected, fixFailed = true, true
 					continue
@@ -300,6 +301,23 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 		return 1, nil
 	}
 	return 0, nil
+}
+
+func validateFixedSource(filename string, src []byte) error {
+	fset := token.NewFileSet()
+	_, err := parser.ParseFile(fset, filename, src, parser.ParseComments|parser.SkipObjectResolution)
+	var parseErrors scanner.ErrorList
+	if errors.As(err, &parseErrors) {
+		// Parser errors retain byte offsets even when //line changes their positions.
+		fset.Iterate(func(file *token.File) bool {
+			for _, e := range parseErrors {
+				e.Pos = fset.PositionFor(file.Pos(e.Pos.Offset), false)
+			}
+			return false
+		})
+		parseErrors.Sort()
+	}
+	return err
 }
 
 func fixRuleIDs(applied []engine.Diagnostic) []string {
