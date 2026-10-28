@@ -332,3 +332,48 @@ func TestStdinFixReportsPackageFailure(t *testing.T) {
 		t.Fatalf("buffer written to disk: %v", err)
 	}
 }
+
+func TestStdinSummaryFileCount(t *testing.T) {
+	for _, typed := range []bool{false, true} {
+		for _, tc := range []struct {
+			name   string
+			args   []string
+			ignore bool
+			want   string
+		}{
+			{"disk files", []string{"."}, false, " on 2 files with "},
+			{"stdin", []string{"--stdin-filename=buffer.go"}, false, " on 1 file with "},
+			{"stdin fixes", []string{"--stdin-filename=buffer.go", "--fix"}, false, " on 1 file with "},
+			{"ignored stdin", []string{"--stdin-filename=buffer.go"}, true, " on 0 files with "},
+		} {
+			t.Run(fmt.Sprintf("%s/typed=%t", tc.name, typed), func(t *testing.T) {
+				t.Chdir(t.TempDir())
+				writeTestFile(t, "go.mod", "module test.local/stdin\n\ngo 1.26.0\n")
+				config := `{"rules":{"test/rename":"warn"}}`
+				if tc.ignore {
+					config = `{"rules":{"test/rename":"warn"},"ignorePatterns":["buffer.go"]}`
+				}
+				writeTestFile(t, ".goxlintrc.json", config)
+				writeTestFile(t, "buffer.go", "package p\n")
+				writeTestFile(t, "sibling.go", "package p\n")
+				var stdout, stderr bytes.Buffer
+				code := run(tc.args, strings.NewReader("package p\n"), &stdout, &stderr, testPlugin(typed))
+				if code != 0 {
+					t.Fatalf("exit %d: %s; %s", code, &stdout, &stderr)
+				}
+				summary := stdout.String()
+				if tc.name == "stdin fixes" {
+					summary = stderr.String()
+					if stdout.String() != "package p\n" {
+						t.Fatalf("source output changed: %q", &stdout)
+					}
+				} else if stderr.Len() != 0 {
+					t.Fatalf("unexpected stderr: %s", &stderr)
+				}
+				if !strings.Contains(summary, tc.want) {
+					t.Fatalf("want %q in summary: %s", tc.want, summary)
+				}
+			})
+		}
+	}
+}

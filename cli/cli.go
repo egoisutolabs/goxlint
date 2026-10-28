@@ -344,7 +344,11 @@ func lint(args []string, stdin io.Reader, stdout, stderr io.Writer, reg *config.
 	var diags []engine.Diagnostic
 	sources := map[string][]byte{}
 	warnings, errs := 0, 0
+	fileCount := 0
 	for i, ds := range results {
+		if selected(files[i].Filename) {
+			fileCount++
+		}
 		for _, d := range ds {
 			if !selected(files[i].Filename) && !d.IsInternalError() {
 				continue
@@ -397,7 +401,7 @@ func lint(args []string, stdin io.Reader, stdout, stderr io.Writer, reg *config.
 		ruleCount := len(resolved.AllRules())
 		fmt.Fprintf(diagnosticOut, "\nFound %d warning%s and %d error%s.\nFinished in %s on %d file%s with %d rule%s using %d threads (%s mode).\n",
 			warnings, plural(warnings), errs, plural(errs), time.Since(start).Round(time.Millisecond),
-			len(files), plural(len(files)), ruleCount, plural(ruleCount), runtime.GOMAXPROCS(0), mode(typed))
+			fileCount, plural(fileCount), ruleCount, plural(ruleCount), runtime.GOMAXPROCS(0), mode(typed))
 	}
 
 	if *timing {

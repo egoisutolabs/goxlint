@@ -58,6 +58,9 @@ counted only for the supplied file. Internal rule errors in supporting files
 are also shown and cause exit code `1`, even with `--quiet`. Package load
 errors still go to stderr and cause exit code `2`.
 
+The summary counts only the supplied file if it was loaded. It does not count
+supporting files. An ignored or skipped buffer counts as zero files.
+
 Without a fix flag, diagnostics go to stdout in the selected format. With
 `--fix`, `--fix-suggestions`, or `--fix-dangerously`, **stdout contains only the
 resulting source**. Diagnostics, the summary, fix messages, and timing go to
