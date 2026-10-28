@@ -8,6 +8,13 @@ Read [Style of the documents](#style-of-the-documents).
 
 All contributors must obey the [code of conduct](CODE_OF_CONDUCT.md).
 
+## Ask a question
+
+Ask questions in [GitHub Discussions](https://github.com/egoisutolabs/goxlint/discussions),
+in the Q&A category. Use issues only for problems and accepted features.
+
+Share the rules and plugins that you wrote in the Show and tell category.
+
 ## Report a problem
 
 To report a security problem, do not open an issue. Read
@@ -27,7 +34,8 @@ possible. If you cannot share it, describe what the rule does.
 
 ## Request a feature
 
-Open an issue before you write a large change. Describe the problem that the
+To discuss an idea, use the Ideas category in Discussions. Open an issue
+before you write a large change. Describe the problem that the
 feature solves, not only the solution. We can then agree on the design before
 you start.
 

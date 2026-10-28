@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a question
+    url: https://github.com/egoisutolabs/goxlint/discussions/categories/q-a
+    about: Ask how to use goxlint or how to write a rule.
+  - name: Suggest an idea
+    url: https://github.com/egoisutolabs/goxlint/discussions/categories/ideas
+    about: Discuss a feature idea before you open an issue.
+  - name: Report a security problem
+    url: https://github.com/egoisutolabs/goxlint/security/advisories/new
+    about: Report security problems privately. Do not open a public issue.
