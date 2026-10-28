@@ -254,3 +254,81 @@ func TestStdinFixLevelsAndRemainingDiagnostics(t *testing.T) {
 		})
 	}
 }
+
+func TestStdinPreservesSupportingRuleFailures(t *testing.T) {
+	for _, failure := range []string{"package panic", "package panic off-buffer", "bad package report", "file panic"} {
+		for _, typed := range []bool{false, true} {
+			for _, format := range []string{"json", "default", "sarif"} {
+				t.Run(fmt.Sprintf("%s/typed=%t/%s", failure, typed, format), func(t *testing.T) {
+					t.Chdir(t.TempDir())
+					writeTestFile(t, "go.mod", "module test.local/stdin\n\ngo 1.26.0\n")
+					config := `{"rules":{"test/failure":"warn"}}`
+					if failure == "package panic off-buffer" {
+						config = `{"rules":{"test/failure":"warn"},"overrides":[{"files":["b.go"],"rules":{"test/failure":"off"}}]}`
+					}
+					writeTestFile(t, ".goxlintrc.json", config)
+					writeTestFile(t, "a.go", "package p\nvar sibling = 1\n")
+					writeTestFile(t, "b.go", "package p\n")
+					rule := &goxlint.Rule{Meta: goxlint.Meta{Name: "failure", Description: "Test supporting rule failures.", Category: goxlint.Correctness, NeedsTypes: typed}}
+					switch failure {
+					case "package panic", "package panic off-buffer":
+						rule.AnalyzePackage = func(*goxlint.PackageContext) { panic("package failed") }
+					case "bad package report":
+						rule.AnalyzePackage = func(pkg *goxlint.PackageContext) {
+							pkg.Files[0].Report(goxlint.Diagnostic{Message: "invalid position"})
+						}
+					case "file panic":
+						rule.Create = func(ctx *goxlint.Context) goxlint.Visitor {
+							if filepath.Base(ctx.Filename) == "a.go" {
+								panic("supporting file failed")
+							}
+							return nil
+						}
+					}
+					var stdout, stderr bytes.Buffer
+					code := run([]string{"--stdin-filename=b.go", "--format=" + format, "--quiet"}, strings.NewReader("package p\nvar buffer = 2\n"), &stdout, &stderr, goxlint.Plugin{Name: "test", Rules: []*goxlint.Rule{rule}})
+					if code != 1 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "internal error in rule") {
+						t.Fatalf("failure hidden: exit %d: %s; %s", code, &stdout, &stderr)
+					}
+					switch format {
+					case "json":
+						var diags []struct{ Rule, File, Severity string }
+						if err := json.Unmarshal(stdout.Bytes(), &diags); err != nil {
+							t.Fatal(err)
+						}
+						if len(diags) != 1 || diags[0].Rule != "test/failure" || diags[0].File != "a.go" || diags[0].Severity != "error" {
+							t.Fatalf("wrong failure diagnostic: %s", &stdout)
+						}
+					case "default":
+						if !strings.Contains(stdout.String(), "[a.go:1:1]") || !strings.Contains(stdout.String(), "package p") {
+							t.Fatalf("missing supporting-file source: %s", &stdout)
+						}
+					case "sarif":
+						if !json.Valid(stdout.Bytes()) || !strings.Contains(stdout.String(), `"uri": "a.go"`) || !strings.Contains(stdout.String(), `"text": "Test supporting rule failures."`) {
+							t.Fatalf("missing SARIF failure metadata: %s", &stdout)
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestStdinFixReportsPackageFailure(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeTestFile(t, ".goxlintrc.json", `{"categories":{"correctness":"error"}}`)
+	writeTestFile(t, "a.go", "package p\n")
+	plugin := testPlugin(false)
+	plugin.Rules = append(plugin.Rules, &goxlint.Rule{
+		Meta:           goxlint.Meta{Name: "failure", Category: goxlint.Correctness},
+		AnalyzePackage: func(*goxlint.PackageContext) { panic("package failed") },
+	})
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--stdin-filename=b.go", "--fix", "--format=unix"}, strings.NewReader("package p\n\nvar bad = 1\n"), &stdout, &stderr, plugin)
+	if code != 1 || stdout.String() != "package p\n\nvar good = 1\n" || !strings.Contains(stderr.String(), "a.go:1:1: internal error in rule:") {
+		t.Fatalf("failure lost while fixing: exit %d: %s; %s", code, &stdout, &stderr)
+	}
+	if _, err := os.Stat("b.go"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("buffer written to disk: %v", err)
+	}
+}

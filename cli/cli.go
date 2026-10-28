@@ -345,10 +345,10 @@ func lint(args []string, stdin io.Reader, stdout, stderr io.Writer, reg *config.
 	sources := map[string][]byte{}
 	warnings, errs := 0, 0
 	for i, ds := range results {
-		if !selected(files[i].Filename) {
-			continue
-		}
 		for _, d := range ds {
+			if !selected(files[i].Filename) && !d.IsInternalError() {
+				continue
+			}
 			if d.Severity == engine.Warn {
 				warnings++
 				if *quiet {
@@ -376,6 +376,12 @@ func lint(args []string, stdin io.Reader, stdout, stderr io.Writer, reg *config.
 			}
 			for _, cr := range rulesFor(f.Filename) {
 				p.Rules[cr.ID] = cr.Rule.Meta
+			}
+		}
+		// Supporting-file failures can name rules disabled for the stdin file.
+		for _, d := range diags {
+			if rule := reg.Rules[d.RuleID]; rule != nil {
+				p.Rules[d.RuleID] = rule.Meta
 			}
 		}
 		if lintOpts.ReportUnusedSuppressions != engine.Off {

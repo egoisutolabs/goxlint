@@ -53,9 +53,10 @@ suppression comments use the source from stdin.
 In syntax mode, goxlint parses the buffer and the Go files beside it. In typed
 mode, it loads the file's package with the buffer as an overlay. Typed mode
 uses the normal module and build-tag rules. Package rules see the buffer and
-the other loaded files in its package. Only diagnostics in the supplied file
-are shown or counted for lint failure. Package load errors still go to stderr
-and cause exit code `2`.
+the other loaded files in its package. Ordinary lint findings are shown and
+counted only for the supplied file. Internal rule errors in supporting files
+are also shown and cause exit code `1`, even with `--quiet`. Package load
+errors still go to stderr and cause exit code `2`.
 
 Without a fix flag, diagnostics go to stdout in the selected format. With
 `--fix`, `--fix-suggestions`, or `--fix-dangerously`, **stdout contains only the

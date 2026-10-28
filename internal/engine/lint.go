@@ -58,6 +58,10 @@ type Diagnostic struct {
 	internal bool // rule failures make unused-suppression analysis unreliable
 }
 
+// IsInternalError distinguishes rule failures from ordinary lint findings.
+// Callers must retain these errors when filtering results to selected files.
+func (d Diagnostic) IsInternalError() bool { return d.internal }
+
 // LintOptions controls engine diagnostics independently of plugin rules.
 // The zero value disables unused-suppression reporting for isolated rule tests.
 type LintOptions struct {

@@ -69,8 +69,9 @@ file. Syntax mode parses the buffer and sibling files. Typed mode passes the
 buffer through `packages.Config.Overlay` and loads its package. The engine
 uses the same buffer for the syntax tree, source text, and type information.
 
-Package rules can use other loaded files as evidence. The CLI shows only the
-supplied file's diagnostics. With a fix flag, it changes the overlay between
+Package rules can use other loaded files as evidence. The CLI shows ordinary
+findings only for the supplied file. It also shows internal rule errors from
+supporting files. With a fix flag, it changes the overlay between
 passes and writes the resulting source to stdout. It does not write files.
 Read [Source from stdin](cli.md#source-from-stdin).
 
