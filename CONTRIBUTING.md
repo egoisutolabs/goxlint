@@ -169,7 +169,7 @@ three systems, as set in `.gitattributes`.
 ## Style of the documents
 
 Write the documents in `docs/` in ASD-STE100 Simplified Technical English.
-`README.md` is the exception: it uses clear, natural English.
+`README.md` is the exception: it uses plain technical English.
 
 For the documents in `docs/`:
 
