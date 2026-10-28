@@ -188,7 +188,7 @@ and column numbers start at 1. Columns count bytes.
 | --- | --- |
 | `0` | No errors. The warning limits are not exceeded. |
 | `1` | One or more errors, or a warning limit is exceeded. |
-| `2` | A usage error, a configuration error, or a load error. |
+| `2` | A usage error, a configuration error, a load error, or a fix that produces invalid Go syntax. |
 
 A load error occurs when a file cannot be read or parsed, or when a package
 has type errors. goxlint shows each load error on stderr with the prefix

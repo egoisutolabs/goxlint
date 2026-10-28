@@ -12,10 +12,14 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	goformat "go/format"
+	"go/parser"
+	"go/token"
 	"io"
 	"maps"
 	"os"
@@ -58,6 +62,12 @@ func Run(args []string, stdout, stderr io.Writer, plugins ...goxlint.Plugin) int
 }
 
 const maxFixPasses = 10
+
+type fixedFile struct {
+	format   bool
+	rejected bool
+	ruleIDs  []string
+}
 
 type severityFlag struct {
 	sev  string
@@ -160,8 +170,10 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 	lintOpts := engine.LintOptions{ReportUnusedSuppressions: resolved.ReportUnusedSuppressions}
 	results := engine.LintAll(files, rulesFor, lintOpts)
 
+	fixFailed := false
 	if maxFix != goxlint.FixNone {
 		fixed, passes := 0, 0
+		fixedFiles := map[string]*fixedFile{}
 		for passes < maxFixPasses {
 			appliedInPass := 0
 			for i, f := range files {
@@ -169,13 +181,30 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 				if f.Incomplete {
 					continue
 				}
+				state := fixedFiles[f.Filename]
+				if state != nil && state.rejected {
+					continue
+				}
 				src, applied := engine.ApplyFixes(f.Source, results[i], maxFix)
 				if len(applied) == 0 {
+					continue
+				}
+				if state == nil {
+					original, err := goformat.Source(f.Source)
+					state = &fixedFile{format: err == nil && bytes.Equal(original, f.Source)}
+					fixedFiles[f.Filename] = state
+				}
+				ids := fixRuleIDs(applied)
+				// Validate each pass before writing, but leave formatting until the end.
+				if _, err := parser.ParseFile(token.NewFileSet(), f.Filename, src, parser.ParseComments|parser.SkipObjectResolution); err != nil {
+					reportInvalidFix(stderr, f.Filename, ids, err)
+					state.rejected, fixFailed = true, true
 					continue
 				}
 				if err := os.WriteFile(f.Filename, src, 0o644); err != nil {
 					return 0, err
 				}
+				state.ruleIDs = ids
 				appliedInPass += len(applied)
 			}
 			if appliedInPass == 0 {
@@ -186,6 +215,30 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 			files, loadErrs = engine.Load(opts)
 			results = engine.LintAll(files, rulesFor, lintOpts)
 		}
+		formatted := false
+		for _, f := range files {
+			state := fixedFiles[f.Filename]
+			if f.Incomplete || state == nil || !state.format || len(state.ruleIDs) == 0 {
+				continue
+			}
+			src, err := goformat.Source(f.Source)
+			if err != nil {
+				reportInvalidFix(stderr, f.Filename, state.ruleIDs, err)
+				state.rejected, fixFailed = true, true
+				continue
+			}
+			if bytes.Equal(src, f.Source) {
+				continue
+			}
+			if err := os.WriteFile(f.Filename, src, 0o644); err != nil {
+				return 0, err
+			}
+			formatted = true
+		}
+		if formatted {
+			files, loadErrs = engine.Load(opts)
+			results = engine.LintAll(files, rulesFor, lintOpts)
+		}
 		if fixed > 0 {
 			fmt.Fprintf(stderr, "Applied %d fix(es) in %d pass(es).\n", fixed, passes)
 		}
@@ -193,7 +246,7 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 			// Check the final diagnostics without writing an eleventh pass.
 			var unstable []string
 			for i, f := range files {
-				if f.Incomplete {
+				if f.Incomplete || (fixedFiles[f.Filename] != nil && fixedFiles[f.Filename].rejected) {
 					continue
 				}
 				if _, applied := engine.ApplyFixes(f.Source, results[i], maxFix); len(applied) > 0 {
@@ -241,12 +294,25 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 	}
 
 	switch {
-	case len(loadErrs) > 0:
+	case len(loadErrs) > 0 || fixFailed:
 		return 2, nil
 	case errs > 0, *denyWarnings && warnings > 0, *maxWarnings >= 0 && warnings > *maxWarnings:
 		return 1, nil
 	}
 	return 0, nil
+}
+
+func fixRuleIDs(applied []engine.Diagnostic) []string {
+	ids := make([]string, 0, len(applied))
+	for _, d := range applied {
+		ids = append(ids, d.RuleID)
+	}
+	slices.Sort(ids)
+	return slices.Compact(ids)
+}
+
+func reportInvalidFix(w io.Writer, filename string, ids []string, err error) {
+	fmt.Fprintf(w, "goxlint: fix: %s: fixes from %s produced invalid Go; file not written: %v\n", filepath.ToSlash(filename), strings.Join(ids, ", "), err)
 }
 
 func applySeverityFlags(cfg *config.Config, flags [][2]string) error {

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/egoisutolabs/goxlint"
+	"github.com/egoisutolabs/goxlint/goxlinttest"
 	"github.com/egoisutolabs/goxlint/internal/config"
 )
 
@@ -563,7 +564,7 @@ func TestFixPassSkipsNewlyIncompletePackages(t *testing.T) {
 		}
 	}
 	writeTestFile(t, "healthy/a.go", "package healthy\nvar value = ((1))\n")
-	writeTestFile(t, "broken/b.go", "package broken\nvar value = 1\n")
+	writeTestFile(t, "broken/b.go", "package broken\n\nvar value = 1\n")
 	plugin := goxlint.Plugin{Name: "test", Rules: []*goxlint.Rule{
 		unparenRule(goxlint.FixSafe),
 		{Meta: goxlint.Meta{Name: "types", Category: goxlint.Correctness, NeedsTypes: true}},
@@ -575,8 +576,8 @@ func TestFixPassSkipsNewlyIncompletePackages(t *testing.T) {
 				}
 				return goxlint.Visit(goxlint.On(func(spec *ast.ValueSpec) {
 					value := spec.Values[0]
-					replacement := "missing"
-					if ctx.Text(value) == "missing" {
+					replacement := "missing+1"
+					if ctx.Text(value) == "missing+1" {
 						replacement = "0"
 					}
 					ctx.Report(goxlint.Diagnostic{Node: value, Message: "replace with " + replacement, Fix: &goxlint.Fix{
@@ -596,7 +597,7 @@ func TestFixPassSkipsNewlyIncompletePackages(t *testing.T) {
 	}
 	for name, want := range map[string]string{
 		"healthy/a.go": "package healthy\nvar value = 1\n",
-		"broken/b.go":  "package broken\nvar value = missing\n",
+		"broken/b.go":  "package broken\n\nvar value = missing+1\n",
 	} {
 		if got, err := os.ReadFile(name); err != nil || string(got) != want {
 			t.Errorf("%s: got %q, want %q: %v", name, got, want, err)
@@ -660,5 +661,197 @@ func TestSlashPathsAndPatterns(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func expressionFixRule(name string, replacements map[string]string, kind goxlint.FixKind) *goxlint.Rule {
+	return &goxlint.Rule{
+		Meta: goxlint.Meta{Name: name, Category: goxlint.Correctness, Fixable: kind},
+		Create: func(ctx *goxlint.Context) goxlint.Visitor {
+			return goxlint.Visit(goxlint.On(func(expr ast.Expr) {
+				if replacement, ok := replacements[ctx.Text(expr)]; ok {
+					ctx.Report(goxlint.Diagnostic{Node: expr, Message: "replace expression", Fix: &goxlint.Fix{
+						Kind: kind, Edits: []goxlint.Edit{goxlint.ReplaceNode(expr, replacement)},
+					}})
+				}
+			}))
+		},
+	}
+}
+
+func TestFixPreservesFormattingPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name, flag, source, want string
+		kind                     goxlint.FixKind
+	}{
+		{"clean safe", "--fix", "package p\n\nvar value = 1\n", "package p\n\nvar value = 2 + 3\n", goxlint.FixSafe},
+		{"clean suggestion", "--fix-suggestions", "package p\n\nvar value = 1\n", "package p\n\nvar value = 2 + 3\n", goxlint.FixSuggestion},
+		{"clean dangerous", "--fix-dangerously", "package p\n\nvar value = 1\n", "package p\n\nvar value = 2 + 3\n", goxlint.FixDangerous},
+		{"unformatted", "--fix", "package p\nvar value=1\n", "package p\nvar value=2+3\n", goxlint.FixSafe},
+		{"no fix", "--fix", "package p\nvar value=9\n", "package p\nvar value=9\n", goxlint.FixSafe},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			writeTestFile(t, ".goxlintrc.json", `{"categories":{"correctness":"error"}}`)
+			writeTestFile(t, "example.go", tc.source)
+			var stdout, stderr bytes.Buffer
+			plugin := goxlint.Plugin{Name: "test", Rules: []*goxlint.Rule{expressionFixRule("expression", map[string]string{"1": "2+3"}, tc.kind)}}
+			if code := Run([]string{tc.flag, "--format=json", "example.go"}, &stdout, &stderr, plugin); code != 0 || strings.TrimSpace(stdout.String()) != "[]" {
+				t.Fatalf("unexpected result: exit %d: %s; %s", code, &stdout, &stderr)
+			}
+			if got, err := os.ReadFile("example.go"); err != nil || string(got) != tc.want {
+				t.Fatalf("got source %q, want %q: %v", got, tc.want, err)
+			}
+			wantSummary := "Applied 1 fix(es) in 1 pass(es).\n"
+			if tc.name == "no fix" {
+				wantSummary = ""
+			}
+			if stderr.String() != wantSummary {
+				t.Fatalf("unexpected fix summary: %s", &stderr)
+			}
+		})
+	}
+}
+
+func TestFixFormatsOnlyAfterLastPass(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeTestFile(t, ".goxlintrc.json", `{"categories":{"correctness":"error"}}`)
+	writeTestFile(t, "example.go", "package p\n\nvar value = 1\n")
+	plugin := goxlint.Plugin{Name: "test", Rules: []*goxlint.Rule{
+		expressionFixRule("first", map[string]string{"1": "2+3"}, goxlint.FixSafe),
+		// Matching the raw text proves that formatting is deferred between passes.
+		expressionFixRule("second", map[string]string{"2+3": "4+5"}, goxlint.FixSafe),
+		{
+			Meta: goxlint.Meta{Name: "remaining", Category: goxlint.Correctness},
+			Create: func(ctx *goxlint.Context) goxlint.Visitor {
+				return goxlint.Visit(goxlint.On(func(expr *ast.BasicLit) {
+					if expr.Value == "5" {
+						ctx.Report(goxlint.Diagnostic{Node: expr, Message: "final value"})
+					}
+				}))
+			},
+		},
+	}}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--fix", "--format=json", "example.go"}, &stdout, &stderr, plugin); code != 1 {
+		t.Fatalf("want final lint error, got exit %d: %s", code, &stderr)
+	}
+	if got, err := os.ReadFile("example.go"); err != nil || string(got) != "package p\n\nvar value = 4 + 5\n" {
+		t.Fatalf("formatting policy lost between passes: %q: %v", got, err)
+	}
+	if stderr.String() != "Applied 2 fix(es) in 2 pass(es).\n" {
+		t.Fatalf("unexpected fix summary: %s", &stderr)
+	}
+	var diags []struct {
+		Message      string
+		Line, Column int
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &diags); err != nil {
+		t.Fatal(err)
+	}
+	if len(diags) != 1 || diags[0].Message != "final value" || diags[0].Line != 3 || diags[0].Column != 17 {
+		t.Fatalf("diagnostics did not use the formatted source: %s", &stdout)
+	}
+}
+
+func TestFixKeepsOriginalUnformattedPolicy(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeTestFile(t, ".goxlintrc.json", `{"categories":{"correctness":"error"}}`)
+	writeTestFile(t, "example.go", "package p\n\nvar value = 1+2\n")
+	plugin := goxlint.Plugin{Name: "test", Rules: []*goxlint.Rule{
+		// The first fix makes the file formatted; the second makes it unformatted.
+		expressionFixRule("expression", map[string]string{"1+2": "3 + 4", "3 + 4": "5+6"}, goxlint.FixSafe),
+	}}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--fix", "--format=json", "example.go"}, &stdout, &stderr, plugin); code != 0 {
+		t.Fatalf("unexpected exit %d: %s", code, &stderr)
+	}
+	if got, err := os.ReadFile("example.go"); err != nil || string(got) != "package p\n\nvar value = 5+6\n" {
+		t.Fatalf("original formatting policy was not preserved: %q: %v", got, err)
+	}
+	if stderr.String() != "Applied 2 fix(es) in 2 pass(es).\n" {
+		t.Fatalf("unexpected fix summary: %s", &stderr)
+	}
+}
+
+func TestInvalidFixIsNotWritten(t *testing.T) {
+	for _, source := range []string{"package p\n\nvar value = 1 + 2\n", "package p\nvar value=1+2\n"} {
+		t.Run(source, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			writeTestFile(t, ".goxlintrc.json", `{"categories":{"correctness":"error"}}`)
+			writeTestFile(t, "broken.go", source)
+			writeTestFile(t, "healthy.go", "package p\n\nvar healthy = 9\n")
+			plugin := goxlint.Plugin{Name: "test", Rules: []*goxlint.Rule{
+				expressionFixRule("invalid", map[string]string{"1": "("}, goxlint.FixSafe),
+				expressionFixRule("other", map[string]string{"2": "3"}, goxlint.FixSafe),
+				expressionFixRule("healthy", map[string]string{"9": "4+5", "4+5": "6+7"}, goxlint.FixSafe),
+			}}
+			var stdout, stderr bytes.Buffer
+			if code := Run([]string{"--fix", "--format=json", "."}, &stdout, &stderr, plugin); code != 2 {
+				t.Fatalf("want operational error, got exit %d: %s", code, &stderr)
+			}
+			for _, want := range []string{"broken.go", "test/invalid, test/other", "produced invalid Go; file not written", "Applied 2 fix(es) in 2 pass(es)."} {
+				if !strings.Contains(stderr.String(), want) {
+					t.Errorf("missing %q in stderr: %s", want, &stderr)
+				}
+			}
+			if strings.Count(stderr.String(), "goxlint: fix:") != 1 || strings.Contains(stderr.String(), "goxlint: load:") {
+				t.Fatalf("invalid source was retried or written: %s", &stderr)
+			}
+			for name, want := range map[string]string{"broken.go": source, "healthy.go": "package p\n\nvar healthy = 6 + 7\n"} {
+				if got, err := os.ReadFile(name); err != nil || string(got) != want {
+					t.Errorf("%s: got %q, want %q: %v", name, got, want, err)
+				}
+			}
+		})
+	}
+}
+
+func TestInvalidLaterFixKeepsEarlierFix(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeTestFile(t, ".goxlintrc.json", `{"categories":{"correctness":"error"}}`)
+	writeTestFile(t, "example.go", "package p\n\nvar value = 1\n")
+	plugin := goxlint.Plugin{Name: "test", Rules: []*goxlint.Rule{
+		expressionFixRule("first", map[string]string{"1": "2+3"}, goxlint.FixSafe),
+		expressionFixRule("invalid", map[string]string{"2+3": "("}, goxlint.FixSafe),
+	}}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--fix", "--format=json", "example.go"}, &stdout, &stderr, plugin); code != 2 {
+		t.Fatalf("want operational error, got exit %d: %s", code, &stderr)
+	}
+	if got, err := os.ReadFile("example.go"); err != nil || string(got) != "package p\n\nvar value = 2 + 3\n" {
+		t.Fatalf("earlier valid fix was not preserved and formatted: %q: %v", got, err)
+	}
+	if !strings.Contains(stderr.String(), "fixes from test/invalid produced invalid Go") || !strings.Contains(stderr.String(), "Applied 1 fix(es) in 1 pass(es).") {
+		t.Fatalf("unexpected stderr: %s", &stderr)
+	}
+}
+
+func TestRuleHarnessKeepsRawFixOutput(t *testing.T) {
+	rule := expressionFixRule("expression", map[string]string{"1": "2+3"}, goxlint.FixSafe)
+	goxlinttest.Run(t, rule, goxlinttest.Cases{Invalid: []goxlinttest.Case{{
+		Code:   "package p\n\nvar value = 1\n",
+		Errors: []goxlinttest.Error{{Message: "replace expression"}},
+		Output: "package p\n\nvar value = 2+3\n",
+	}}})
+}
+
+func TestFixFormatsAtPassLimit(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeTestFile(t, ".goxlintrc.json", `{"categories":{"correctness":"error"}}`)
+	writeTestFile(t, "example.go", "package p\n\nvar value = 1\n")
+	plugin := goxlint.Plugin{Name: "test", Rules: []*goxlint.Rule{
+		expressionFixRule("expression", map[string]string{"1": "1+0"}, goxlint.FixSafe),
+	}}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--fix", "--format=json", "example.go"}, &stdout, &stderr, plugin); code != 1 {
+		t.Fatalf("want remaining lint error, got exit %d: %s", code, &stderr)
+	}
+	want := "package p\n\nvar value = 1" + strings.Repeat(" + 0", 10) + "\n"
+	if got, err := os.ReadFile("example.go"); err != nil || string(got) != want {
+		t.Fatalf("formatting did not run after the tenth pass: %q: %v", got, err)
+	}
+	if !strings.HasPrefix(stderr.String(), "Applied 10 fix(es) in 10 pass(es).\n") || !strings.Contains(stderr.String(), "fixes did not stabilize after 10 passes") {
+		t.Fatalf("unexpected pass-limit summary: %s", &stderr)
 	}
 }

@@ -117,8 +117,10 @@ adds unused-suppression reports. Read [Suppressions](suppressions.md).
 
 If you give a fix flag, goxlint applies the permitted fixes and writes the files.
 Then it loads and lints all files again. It repeats this process until no fixes
-apply, with a limit of ten passes. The output shows the diagnostics after the
-last pass. Read [Fixes](fixes.md).
+apply, with a limit of ten passes. It rejects fixes with invalid syntax before
+writing. After the last pass, it formats changed files that were originally
+`gofmt`-clean. The output shows diagnostics from the final files. Read
+[Fixes](fixes.md).
 
 ## 8. Output
 
