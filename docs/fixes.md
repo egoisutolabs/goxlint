@@ -86,10 +86,12 @@ are not formatted.
    stabilize. It does not write an eleventh pass.
 9. goxlint shows the diagnostics from the final lint, after the last write.
 
-If a fix produces invalid Go syntax, goxlint leaves that file at its last
-accepted version. It reports the filename and the rule IDs of the attempted
-fixes on stderr with the prefix `goxlint: fix:`. It skips further fixes for that
-file during the run. Other files can still receive fixes. The exit code is `2`.
+If a batch of fixes produces invalid Go syntax, goxlint rejects the entire
+batch for that file. It keeps the last accepted version, with final formatting
+if the file was originally `gofmt`-clean and its package is complete. It reports
+the filename and the rule IDs of the attempted fixes on stderr with the prefix
+`goxlint: fix:`. It skips further fixes for that file during the run. Other
+files can still receive fixes. The exit code is `2`.
 
 A pass-limit warning can mean that two rules undo each other's fixes. Examine
 the rules and their options before you run the command again. A file that
