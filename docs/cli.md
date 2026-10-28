@@ -103,7 +103,7 @@ For more information, read [Fixes](fixes.md).
 
 | Flag | Value | Action |
 | --- | --- | --- |
-| `--format` | `default`, `unix`, `json`, `github` | Select the output format. The default is `default`. |
+| `--format` | `default`, `unix`, `json`, `github`, `sarif` | Select the output format. The default is `default`. |
 | `--quiet` | | Do not show warnings. goxlint still counts them. |
 | `--deny-warnings` | | Exit with `1` when there are warnings. |
 | `--max-warnings` | number | Exit with `1` when the number of warnings is more than this number. |
@@ -111,8 +111,8 @@ For more information, read [Fixes](fixes.md).
 ## Output formats
 
 Diagnostic file paths use forward slashes (`/`) on every operating system,
-including Windows. This applies to all formats. Paths within the working
-directory are relative to it. Other paths stay absolute. A directory named
+including Windows. Paths within the working directory are relative to it.
+Other paths stay absolute, except in SARIF output. A directory named
 `..foo` inside the working directory also uses a relative path.
 
 ### default
@@ -179,8 +179,35 @@ on the pull request.
 ::warning file=api/client.go,line=12,endLine=12,col=6,endColumn=9,title=acme/no-foo::Do not use `foo`.
 ```
 
-All formats show paths relative to the current directory when possible. Line
-and column numbers start at 1. Columns count bytes.
+### sarif
+
+One [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/sarif-v2.1.0-os.html)
+JSON log. Use this format with code scanning tools.
+
+```sh
+goxlint --format sarif ./... > results.sarif
+```
+
+The log contains one run. Its tool name is `goxlint`. The rule list contains
+one entry for each rule enabled in at least one selected file, after flags
+and file overrides. Each entry has the rule ID, description, and category.
+An empty description is omitted. The list also contains
+`goxlint/unused-suppression` when that check is enabled.
+
+Each diagnostic becomes a result with a rule ID, severity, message, and
+source range. Diagnostic help is in `properties.help`. A run with no visible
+diagnostics has an empty `results` array. Exit codes and `--quiet` work as
+with the other formats.
+
+SARIF file URIs are relative to the working directory, including `../` for
+files outside it. A path on another Windows volume uses an absolute `file:`
+URI. URIs use `/` and escape special characters, for example a space becomes
+`%20`.
+
+Line and column numbers start at 1. The end position is exclusive. SARIF
+columns count Unicode code points. Other formats count bytes. Tabs count as
+one column in SARIF. All formats use physical positions and ignore `//line`
+directives.
 
 ## Exit codes
 
@@ -207,3 +234,42 @@ there are errors.
 ```
 
 To make warnings fail the step, add `--deny-warnings`.
+
+### Upload SARIF to GitHub code scanning
+
+1. Put your linter in `./tools/lint`, or change the build path below.
+2. Add this workflow to `.github/workflows/lint.yml`.
+3. Run the workflow. Read the results in the repository's Security tab.
+
+```yaml
+name: Lint
+on: [push, pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build linter
+        run: go build -o "$RUNNER_TEMP/goxlint" ./tools/lint
+      - name: Lint
+        id: lint
+        run: '"$RUNNER_TEMP/goxlint" --format sarif ./... > results.sarif'
+      - name: Upload results
+        if: ${{ !cancelled() && steps.lint.outcome != 'skipped' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif
+          category: goxlint
+```
+
+The upload step runs even when diagnostics make the lint step fail. The job
+still fails in that case. Add `--deny-warnings` to make warnings fail the job.
+The repository must have code scanning available. For access requirements,
+read [Uploading a SARIF file to GitHub](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/integrate-with-existing-tools/upload-sarif-file).

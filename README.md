@@ -158,7 +158,7 @@ does not add them to stock gopls.
 | Configuration       | A `.goxlintrc.json` file sets severities, rule options, ignore patterns, and per-file overrides.      |
 | Fixes               | A rule can attach a fix. Fixes have three levels: safe, suggestion, and dangerous.                    |
 | Suppressions        | `//goxlint:ignore` comments disable a rule for a line or a file. goxlint reports unused suppressions. |
-| Output              | Code frames for people. Also `unix`, `json`, and `github` formats for tools and CI.                   |
+| Output              | Code frames for people. Also `unix`, `json`, `github`, and `sarif` for tools and CI.                   |
 | Rule tests          | The `goxlinttest` package tests file and package rules with valid and invalid code samples.           |
 | go/analysis adapter | Run rules with existing analysis drivers. See [the adapter guide](docs/go-analysis.md).               |
 

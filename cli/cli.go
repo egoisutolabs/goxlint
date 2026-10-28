@@ -288,6 +288,19 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 	}
 
 	p := &output.Printer{W: stdout, Format: *format, Color: colorEnabled(stdout), Root: cwd, Sources: sources}
+	if *format == "sarif" {
+		p.Rules = map[string]goxlint.Meta{}
+		for _, f := range files {
+			for _, cr := range rulesFor(f.Filename) {
+				p.Rules[cr.ID] = cr.Rule.Meta
+			}
+		}
+		if lintOpts.ReportUnusedSuppressions != engine.Off {
+			p.Rules[engine.UnusedSuppressionRuleID] = goxlint.Meta{
+				Description: "Report unused suppression targets.", Category: goxlint.Correctness,
+			}
+		}
+	}
 	if err := p.Print(diags); err != nil {
 		return 0, err
 	}

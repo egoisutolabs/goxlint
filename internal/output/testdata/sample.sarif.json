@@ -1,0 +1,117 @@
+{
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "goxlint",
+          "rules": [
+            {
+              "id": "goxlint/unused-suppression",
+              "properties": {
+                "category": ""
+              }
+            },
+            {
+              "id": "test/error",
+              "shortDescription": {
+                "text": "Check declarations."
+              },
+              "properties": {
+                "category": "correctness"
+              }
+            },
+            {
+              "id": "test/quiet",
+              "properties": {
+                "category": "pedantic"
+              }
+            },
+            {
+              "id": "test/warning",
+              "shortDescription": {
+                "text": "Avoid bad names."
+              },
+              "properties": {
+                "category": "style"
+              }
+            }
+          ]
+        }
+      },
+      "columnKind": "unicodeCodePoints",
+      "results": [
+        {
+          "ruleId": "test/warning",
+          "level": "warning",
+          "message": {
+            "text": "Rename bad."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/a%20%23%25.go"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 5,
+                  "endLine": 3,
+                  "endColumn": 8
+                }
+              }
+            }
+          ],
+          "properties": {
+            "help": "Use a clear name.\nKeep it short."
+          }
+        },
+        {
+          "ruleId": "test/error",
+          "level": "error",
+          "message": {
+            "text": "Check both declarations."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/a%20%23%25.go"
+                },
+                "region": {
+                  "startLine": 2,
+                  "startColumn": 5,
+                  "endLine": 3,
+                  "endColumn": 15
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "goxlint/unused-suppression",
+          "level": "warning",
+          "message": {
+            "text": "Unused suppression."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/a%20%23%25.go"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 9,
+                  "endLine": 1,
+                  "endColumn": 10
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

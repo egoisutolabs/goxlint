@@ -10,11 +10,12 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/egoisutolabs/goxlint"
 	"github.com/egoisutolabs/goxlint/internal/engine"
 )
 
 // Formats lists the supported --format values.
-var Formats = []string{"default", "unix", "json", "github"}
+var Formats = []string{"default", "unix", "json", "github", "sarif"}
 
 // ValidateFormat checks the format before loading files or applying fixes.
 func ValidateFormat(format string) error {
@@ -31,8 +32,10 @@ type Printer struct {
 	Color  bool
 	// Root shortens file paths in output.
 	Root string
-	// Sources maps filenames to contents, for code frames.
+	// Sources maps filenames to contents, for code frames and SARIF columns.
 	Sources map[string][]byte
+	// Rules maps enabled rule IDs to metadata for SARIF output.
+	Rules map[string]goxlint.Meta
 }
 
 // Print writes all diagnostics.
@@ -41,6 +44,8 @@ func (p *Printer) Print(diags []engine.Diagnostic) error {
 		return err
 	}
 	switch p.Format {
+	case "sarif":
+		return p.sarif(diags)
 	case "", "default":
 		for _, d := range diags {
 			p.frame(d)
