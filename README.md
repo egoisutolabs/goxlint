@@ -160,6 +160,7 @@ does not add them to stock gopls.
 | Suppressions        | `//goxlint:ignore` comments disable a rule for a line or a file. goxlint reports unused suppressions. |
 | Output              | Code frames for people. Also `unix`, `json`, `github`, and `sarif` for tools and CI.                   |
 | Rule tests          | The `goxlinttest` package tests file and package rules with valid and invalid code samples.           |
+| Stdin buffers       | `--stdin-filename` lints unsaved source. Fix flags write the resulting source to stdout.             |
 | Rule timing         | `--timing` shows the 10 slowest rules and load time on stderr.                                       |
 | go/analysis adapter | Run rules with existing analysis drivers. See [the adapter guide](docs/go-analysis.md).               |
 

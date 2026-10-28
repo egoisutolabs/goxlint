@@ -20,8 +20,8 @@ goxlint ./internal/... ./cmd/server
 goxlint main.go handler.go
 ```
 
-If you do not give a pattern, goxlint uses `./...`. You can put flags before or
-after the patterns.
+If you do not give a pattern or `--stdin-filename`, goxlint uses `./...`. You
+can put flags before or after the patterns.
 
 | Pattern | Selects |
 | --- | --- |
@@ -29,6 +29,50 @@ after the patterns.
 | `dir/...` | All packages in `dir` and below it. |
 | `dir` | The package in `dir` only. |
 | `file.go` | One file. In typed mode, goxlint loads the package that contains the file. |
+
+### Source from stdin
+
+Use `--stdin-filename` to lint an unsaved Go buffer:
+
+```sh
+cat handler.go | goxlint --stdin-filename internal/api/handler.go
+cat handler.go | goxlint --stdin-filename internal/api/handler.go --format json
+```
+
+The filename can be relative to the working directory or absolute. The source
+from stdin replaces the contents on disk for this run. The file does not need
+to exist. Do not give package or file patterns with this flag. This is a usage
+error with exit code `2`.
+
+Configuration discovery starts in the working directory, as for a normal run.
+Use `-c` to select another configuration file. The supplied filename selects
+file overrides, ignore patterns, and `_test.go` behavior. An ignored filename
+produces no diagnostics and exits with `0`. Generated-file checks and
+suppression comments use the source from stdin.
+
+In syntax mode, goxlint parses the buffer and the Go files beside it. In typed
+mode, it loads the file's package with the buffer as an overlay. Typed mode
+uses the normal module and build-tag rules. Package rules see the buffer and
+the other loaded files in its package. Only diagnostics in the supplied file
+are shown or counted for lint failure. Package load errors still go to stderr
+and cause exit code `2`.
+
+Without a fix flag, diagnostics go to stdout in the selected format. With
+`--fix`, `--fix-suggestions`, or `--fix-dangerously`, **stdout contains only the
+resulting source**. Diagnostics, the summary, fix messages, and timing go to
+stderr. The selected `--format` applies to those diagnostics. Stderr can also
+contain operational messages, so it is not a single JSON or SARIF document.
+The command does not write the buffer or other package files to disk.
+
+```sh
+cat handler.go | goxlint --stdin-filename internal/api/handler.go --fix > fixed.go
+```
+
+Buffer fixes use the normal pass limit, syntax checks, and formatting policy.
+If no fixes apply, stdout contains the original buffer. This also applies to
+ignored buffers. After a rejected fix, stdout contains the last accepted
+buffer. Check the exit code before you use the output. A failure to read stdin
+exits with `2` and produces no source output.
 
 ### rules
 
@@ -73,6 +117,7 @@ the `correctness` category with `warn`, and sets each registered rule to
 
 | Flag | Value | Action |
 | --- | --- | --- |
+| `--stdin-filename` | path | Read a Go buffer from stdin at this filename. Do not give patterns. |
 | `-c` | path | Use this configuration file. If you do not use `-c`, goxlint finds the nearest `.goxlintrc.json`. |
 | `-D` | rule or category | Set the severity to `error`. You can use the flag more than one time. |
 | `-W` | rule or category | Set the severity to `warn`. You can use the flag more than one time. |

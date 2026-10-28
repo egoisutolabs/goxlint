@@ -44,7 +44,12 @@ func Main(plugins ...goxlint.Plugin) {
 
 // Run runs goxlint and returns the exit code: 0 success, 1 lint failure,
 // 2 usage or operational error (including incomplete loading).
+// With --stdin-filename, it reads source from os.Stdin.
 func Run(args []string, stdout, stderr io.Writer, plugins ...goxlint.Plugin) int {
+	return run(args, os.Stdin, stdout, stderr, plugins...)
+}
+
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer, plugins ...goxlint.Plugin) int {
 	reg := config.NewRegistry(plugins...)
 	if len(args) > 0 {
 		switch args[0] {
@@ -54,7 +59,7 @@ func Run(args []string, stdout, stderr io.Writer, plugins ...goxlint.Plugin) int
 			return initConfig(stdout, stderr, reg)
 		}
 	}
-	code, err := lint(args, stdout, stderr, reg)
+	code, err := lint(args, stdin, stdout, stderr, reg)
 	if err != nil {
 		fmt.Fprintln(stderr, "goxlint:", err)
 		return 2
@@ -81,22 +86,23 @@ func (f severityFlag) Set(v string) error {
 	return nil
 }
 
-func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, error) {
+func lint(args []string, stdin io.Reader, stdout, stderr io.Writer, reg *config.Registry) (int, error) {
 	fs := flag.NewFlagSet("goxlint", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (
-		configPath   = fs.String("c", "", "path to config file (default: nearest "+config.FileName+")")
-		format       = fs.String("format", "default", "output format: "+strings.Join(output.Formats, ", "))
-		fix          = fs.Bool("fix", false, "apply safe fixes")
-		fixSuggest   = fs.Bool("fix-suggestions", false, "apply safe and suggested fixes")
-		fixDangerous = fs.Bool("fix-dangerously", false, "apply all fixes, including dangerous ones")
-		timing       = fs.Bool("timing", false, "show the 10 slowest rules and load time on stderr")
-		quiet        = fs.Bool("quiet", false, "report errors only")
-		denyWarnings = fs.Bool("deny-warnings", false, "exit with 1 when there are warnings")
-		maxWarnings  = fs.Int("max-warnings", -1, "exit with 1 when warnings exceed this number")
-		tags         = fs.String("tags", "", "comma-separated build tags for type-aware loading, as in go build -tags")
-		unused       = fs.String("report-unused-suppressions", "", "unused suppression severity: off, warn, error (default: config or warn)")
-		overrides    [][2]string
+		configPath    = fs.String("c", "", "path to config file (default: nearest "+config.FileName+")")
+		stdinFilename = fs.String("stdin-filename", "", "read stdin as this Go file; with fixes, write source to stdout")
+		format        = fs.String("format", "default", "output format: "+strings.Join(output.Formats, ", "))
+		fix           = fs.Bool("fix", false, "apply safe fixes")
+		fixSuggest    = fs.Bool("fix-suggestions", false, "apply safe and suggested fixes")
+		fixDangerous  = fs.Bool("fix-dangerously", false, "apply all fixes, including dangerous ones")
+		timing        = fs.Bool("timing", false, "show the 10 slowest rules and load time on stderr")
+		quiet         = fs.Bool("quiet", false, "report errors only")
+		denyWarnings  = fs.Bool("deny-warnings", false, "exit with 1 when there are warnings")
+		maxWarnings   = fs.Int("max-warnings", -1, "exit with 1 when warnings exceed this number")
+		tags          = fs.String("tags", "", "comma-separated build tags for type-aware loading, as in go build -tags")
+		unused        = fs.String("report-unused-suppressions", "", "unused suppression severity: off, warn, error (default: config or warn)")
+		overrides     [][2]string
 	)
 	fs.Var(severityFlag{"error", &overrides}, "D", "deny a rule or category (repeatable)")
 	fs.Var(severityFlag{"warn", &overrides}, "W", "warn on a rule or category (repeatable)")
@@ -123,6 +129,15 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 	}
 	if err := output.ValidateFormat(*format); err != nil {
 		return 0, err
+	}
+	stdinSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "stdin-filename" {
+			stdinSet = true
+		}
+	})
+	if stdinSet && (*stdinFilename == "" || len(patterns) > 0) {
+		return 0, fmt.Errorf("--stdin-filename needs a filename and cannot be used with patterns")
 	}
 
 	cwd, err := os.Getwd()
@@ -165,11 +180,47 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 
 	typed := resolved.AnyOverrideNeedsTypes(reg) || slices.ContainsFunc(resolved.AllRules(), func(r *goxlint.Rule) bool { return r.Meta.NeedsTypes })
 	opts := engine.LoadOptions{Dir: cwd, Patterns: patterns, Typed: typed, Tags: splitTags(*tags), Ignore: resolved.Ignored}
+	var stdinPath string
+	stdinIgnored := false
+	if stdinSet {
+		stdinPath, err = filepath.Abs(*stdinFilename)
+		if err != nil {
+			return 0, err
+		}
+		src, err := io.ReadAll(stdin)
+		if err != nil {
+			return 0, fmt.Errorf("read stdin: %w", err)
+		}
+		opts.Overlay = map[string][]byte{stdinPath: src}
+		opts.Patterns = []string{stdinPath}
+		stdinIgnored = resolved.Ignored(stdinPath, false)
+		// Syntax loading needs sibling files for package rules. An unsaved file
+		// in a new directory can still be parsed on its own.
+		if !typed {
+			if info, err := os.Stat(filepath.Dir(stdinPath)); err == nil && info.IsDir() {
+				opts.Patterns = append(opts.Patterns, filepath.Dir(stdinPath))
+			}
+		}
+	}
+	selected := func(name string) bool { return stdinPath == "" || name == stdinPath }
+	writeSource := func(name string, src []byte) error {
+		if stdinSet {
+			if name != stdinPath {
+				return fmt.Errorf("cannot write a different file while fixing stdin: %s", name)
+			}
+			opts.Overlay[name] = src
+			return nil
+		}
+		return os.WriteFile(name, src, 0o644)
+	}
 	rulesFor := func(name string) []engine.ConfiguredRule { return resolved.RulesFor(name, reg) }
 
 	start := time.Now()
 	var loadTime time.Duration
 	load := func() ([]engine.File, []error) {
+		if stdinIgnored {
+			return nil, nil
+		}
 		if !*timing {
 			return engine.Load(opts)
 		}
@@ -204,7 +255,7 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 			appliedInPass := 0
 			for i, f := range files {
 				// An incomplete package may leave rules without the context needed for safe fixes.
-				if f.Incomplete {
+				if f.Incomplete || !selected(f.Filename) {
 					continue
 				}
 				state := fixedFiles[f.Filename]
@@ -227,7 +278,7 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 					state.rejected, fixFailed = true, true
 					continue
 				}
-				if err := os.WriteFile(f.Filename, src, 0o644); err != nil {
+				if err := writeSource(f.Filename, src); err != nil {
 					return 0, err
 				}
 				state.ruleIDs = ids
@@ -244,7 +295,7 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 		formatted := false
 		for _, f := range files {
 			state := fixedFiles[f.Filename]
-			if f.Incomplete || state == nil || !state.format || len(state.ruleIDs) == 0 {
+			if f.Incomplete || !selected(f.Filename) || state == nil || !state.format || len(state.ruleIDs) == 0 {
 				continue
 			}
 			src, err := goformat.Source(f.Source)
@@ -256,7 +307,7 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 			if bytes.Equal(src, f.Source) {
 				continue
 			}
-			if err := os.WriteFile(f.Filename, src, 0o644); err != nil {
+			if err := writeSource(f.Filename, src); err != nil {
 				return 0, err
 			}
 			formatted = true
@@ -272,7 +323,7 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 			// Check the final diagnostics without writing an eleventh pass.
 			var unstable []string
 			for i, f := range files {
-				if f.Incomplete || (fixedFiles[f.Filename] != nil && fixedFiles[f.Filename].rejected) {
+				if f.Incomplete || !selected(f.Filename) || (fixedFiles[f.Filename] != nil && fixedFiles[f.Filename].rejected) {
 					continue
 				}
 				if _, applied := engine.ApplyFixes(f.Source, results[i], maxFix); len(applied) > 0 {
@@ -294,6 +345,9 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 	sources := map[string][]byte{}
 	warnings, errs := 0, 0
 	for i, ds := range results {
+		if !selected(files[i].Filename) {
+			continue
+		}
 		for _, d := range ds {
 			if d.Severity == engine.Warn {
 				warnings++
@@ -308,10 +362,18 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 		sources[files[i].Filename] = files[i].Source
 	}
 
-	p := &output.Printer{W: stdout, Format: *format, Color: colorEnabled(stdout), Root: cwd, Sources: sources}
+	diagnosticOut := stdout
+	stdinFix := stdinSet && maxFix != goxlint.FixNone
+	if stdinFix {
+		diagnosticOut = stderr
+	}
+	p := &output.Printer{W: diagnosticOut, Format: *format, Color: colorEnabled(diagnosticOut), Root: cwd, Sources: sources}
 	if *format == "sarif" {
 		p.Rules = map[string]goxlint.Meta{}
 		for _, f := range files {
+			if !selected(f.Filename) {
+				continue
+			}
 			for _, cr := range rulesFor(f.Filename) {
 				p.Rules[cr.ID] = cr.Rule.Meta
 			}
@@ -327,13 +389,18 @@ func lint(args []string, stdout, stderr io.Writer, reg *config.Registry) (int, e
 	}
 	if *format == "" || *format == "default" {
 		ruleCount := len(resolved.AllRules())
-		fmt.Fprintf(stdout, "\nFound %d warning%s and %d error%s.\nFinished in %s on %d file%s with %d rule%s using %d threads (%s mode).\n",
+		fmt.Fprintf(diagnosticOut, "\nFound %d warning%s and %d error%s.\nFinished in %s on %d file%s with %d rule%s using %d threads (%s mode).\n",
 			warnings, plural(warnings), errs, plural(errs), time.Since(start).Round(time.Millisecond),
 			len(files), plural(len(files)), ruleCount, plural(ruleCount), runtime.GOMAXPROCS(0), mode(typed))
 	}
 
 	if *timing {
 		printTiming(stderr, ruleTimes, loadTime, typed)
+	}
+	if stdinFix {
+		if _, err := stdout.Write(opts.Overlay[stdinPath]); err != nil {
+			return 0, err
+		}
 	}
 
 	switch {

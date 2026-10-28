@@ -102,6 +102,13 @@ correctly. This also applies when an earlier fix causes a load error. These
 files are also excluded from the final formatting step.
 Read [How goxlint works](how-goxlint-works.md#load-errors).
 
+## Fix a buffer from stdin
+
+With `--stdin-filename`, the fix flags change only the buffer in memory.
+The CLI writes the resulting source to stdout and sends diagnostics to stderr.
+It does not change any file on disk. The same pass limit and formatting policy
+apply. Read [Source from stdin](cli.md#source-from-stdin).
+
 ## Show fixes without applying them
 
 The `json` output format has a `fix` field. The field gives the level of the

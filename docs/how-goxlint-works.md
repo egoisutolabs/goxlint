@@ -62,6 +62,18 @@ package.
 
 goxlint does not lint generated files or files that agree with `ignorePatterns`.
 
+### Stdin buffers
+
+With `--stdin-filename`, the source from stdin replaces disk contents for that
+file. Syntax mode parses the buffer and sibling files. Typed mode passes the
+buffer through `packages.Config.Overlay` and loads its package. The engine
+uses the same buffer for the syntax tree, source text, and type information.
+
+Package rules can use other loaded files as evidence. The CLI shows only the
+supplied file's diagnostics. With a fix flag, it changes the overlay between
+passes and writes the resulting source to stdout. It does not write files.
+Read [Source from stdin](cli.md#source-from-stdin).
+
 ### Load errors
 
 A load error occurs when:

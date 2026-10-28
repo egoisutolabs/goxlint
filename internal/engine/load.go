@@ -28,6 +28,9 @@ type LoadOptions struct {
 	Tags []string
 	// Ignore reports whether an absolute path should be skipped.
 	Ignore func(path string, isDir bool) bool
+	// Overlay replaces disk contents by absolute, cleaned filename. The caller
+	// must not mutate it while Load is running.
+	Overlay map[string][]byte
 }
 
 // Load returns the files matched by opts. Errors are non-fatal: files that
@@ -51,7 +54,7 @@ func loadSyntax(opts LoadOptions) ([]File, []error) {
 	files := make([]File, len(paths))
 	fileErrs := make([]error, len(paths))
 	parallel(len(paths), func(i int) {
-		src, err := os.ReadFile(paths[i])
+		src, err := readSource(paths[i], opts.Overlay)
 		if err != nil {
 			fileErrs[i] = err
 			return
@@ -106,6 +109,10 @@ func expandPatterns(opts LoadOptions) ([]string, []error, map[string]bool) {
 		root := pat
 		if !filepath.IsAbs(root) {
 			root = filepath.Join(opts.Dir, root)
+		}
+		if _, ok := opts.Overlay[root]; ok && !recursive {
+			add(root)
+			continue
 		}
 		info, err := os.Stat(root)
 		if err != nil {
@@ -167,6 +174,7 @@ func loadTyped(opts LoadOptions) ([]File, []error) {
 		Dir:        opts.Dir,
 		Tests:      true,
 		BuildFlags: buildFlags(opts.Tags),
+		Overlay:    opts.Overlay,
 		Fset:       token.NewFileSet(),
 		ParseFile: func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
 			return parser.ParseFile(fset, filename, src, parser.ParseComments|parser.SkipObjectResolution)
@@ -215,7 +223,7 @@ func loadTyped(opts LoadOptions) ([]File, []error) {
 				continue
 			}
 			seen[name] = true
-			src, err := os.ReadFile(name)
+			src, err := readSource(name, opts.Overlay)
 			if err != nil {
 				errs = append(errs, err)
 				continue
@@ -229,6 +237,13 @@ func loadTyped(opts LoadOptions) ([]File, []error) {
 		}
 	}
 	return out, errs
+}
+
+func readSource(name string, overlay map[string][]byte) ([]byte, error) {
+	if src, ok := overlay[name]; ok {
+		return src, nil
+	}
+	return os.ReadFile(name)
 }
 
 // packageErrors returns pkg's errors without the compiler output that go list
