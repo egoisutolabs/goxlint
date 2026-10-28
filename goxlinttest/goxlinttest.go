@@ -67,6 +67,17 @@ type Error struct {
 	Message   string
 	Line      int
 	Column    int
+	// Related is unchecked when nil. A non-nil slice checks count and order.
+	Related []RelatedError
+}
+
+// RelatedError is an expected related location. Zero fields are not checked.
+// Line is relative to the source as written, before an added package clause.
+type RelatedError struct {
+	Filename string
+	Message  string
+	Line     int
+	Column   int
 }
 
 // PackageCases are the package inputs for one rule.
@@ -99,6 +110,8 @@ type PackageError struct {
 	Message   string
 	Line      int
 	Column    int
+	// Related is unchecked when nil. A non-nil slice checks count and order.
+	Related []RelatedError
 }
 
 const ruleID = "test/rule"
@@ -149,7 +162,7 @@ func RunPackage(t *testing.T, rule *goxlint.Rule, cases PackageCases) {
 			res := lintPackage(t, rule, c)
 			want := make([]Error, len(c.Errors))
 			for i, w := range c.Errors {
-				want[i] = Error{MessageID: w.MessageID, Message: w.Message, Line: w.Line, Column: w.Column}
+				want[i] = Error{MessageID: w.MessageID, Message: w.Message, Line: w.Line, Column: w.Column, Related: w.Related}
 			}
 			checkErrors(t, rule, res, want)
 			for i, w := range c.Errors {
@@ -226,7 +239,7 @@ func lintPackage(t *testing.T, rule *goxlint.Rule, c PackageCase) result {
 	options := encodeOptions(t, c.Options)
 	rules := make(map[string][]engine.ConfiguredRule, len(c.Files))
 	var files []engine.File
-	var prefixes []int
+	prefixes := make(map[string]int, len(c.Files))
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -245,7 +258,7 @@ func lintPackage(t *testing.T, rule *goxlint.Rule, c PackageCase) result {
 			t.Fatalf("parse error: %v", err)
 		}
 		files = append(files, engine.File{Fset: fset, AST: af, Filename: name, Source: src})
-		prefixes = append(prefixes, strings.Count(prefix, "\n"))
+		prefixes[name] = strings.Count(prefix, "\n")
 		opts := options
 		if override, ok := c.FileOptions[name]; ok {
 			if override == nil {
@@ -257,12 +270,17 @@ func lintPackage(t *testing.T, rule *goxlint.Rule, c PackageCase) result {
 	}
 	typeCheck(t, files)
 	var res result
-	for i, diags := range engine.LintAll(files, func(name string) []engine.ConfiguredRule {
+	for _, diags := range engine.LintAll(files, func(name string) []engine.ConfiguredRule {
 		return rules[name]
 	}, engine.LintOptions{SinglePackage: true}) {
 		for _, d := range diags {
-			d.Start.Line -= prefixes[i]
-			d.End.Line -= prefixes[i]
+			d.Start.Line -= prefixes[d.Filename]
+			d.End.Line -= prefixes[d.Filename]
+			for i := range d.Related {
+				related := &d.Related[i]
+				related.Start.Line -= prefixes[related.Filename]
+				related.End.Line -= prefixes[related.Filename]
+			}
 			res.diags = append(res.diags, d)
 		}
 	}
@@ -363,6 +381,37 @@ func checkErrors(t *testing.T, rule *goxlint.Rule, res result, want []Error) {
 		}
 		if w.Column != 0 && w.Column != d.Start.Column {
 			t.Errorf("error %d: column = %d, want %d", i, d.Start.Column, w.Column)
+		}
+		checkRelated(t, i, d.Related, w.Related, strings.Count(res.prefix, "\n"))
+	}
+}
+
+func checkRelated(t *testing.T, diagnostic int, got []engine.Related, want []RelatedError, prefix int) {
+	t.Helper()
+	if want == nil {
+		return
+	}
+	if len(got) != len(want) {
+		var locations []string
+		for _, related := range got {
+			locations = append(locations, fmt.Sprintf("  %s:%d:%d %s", filepath.ToSlash(related.Filename), related.Start.Line-prefix, related.Start.Column, related.Message))
+		}
+		t.Errorf("error %d: got %d related locations, want %d:\n%s", diagnostic, len(got), len(want), strings.Join(locations, "\n"))
+		return
+	}
+	for i, w := range want {
+		r := got[i]
+		if w.Filename != "" && filepath.ToSlash(w.Filename) != filepath.ToSlash(r.Filename) {
+			t.Errorf("error %d: related %d: filename = %q, want %q", diagnostic, i, filepath.ToSlash(r.Filename), filepath.ToSlash(w.Filename))
+		}
+		if w.Message != "" && w.Message != r.Message {
+			t.Errorf("error %d: related %d: message = %q, want %q", diagnostic, i, r.Message, w.Message)
+		}
+		if w.Line != 0 && w.Line != r.Start.Line-prefix {
+			t.Errorf("error %d: related %d: line = %d, want %d", diagnostic, i, r.Start.Line-prefix, w.Line)
+		}
+		if w.Column != 0 && w.Column != r.Start.Column {
+			t.Errorf("error %d: related %d: column = %d, want %d", diagnostic, i, r.Start.Column, w.Column)
 		}
 	}
 }

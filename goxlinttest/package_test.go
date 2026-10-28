@@ -208,6 +208,15 @@ func TestRunPackageFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ name, message string }{
+		{"related filename", `error 0: related 1: filename = "a/original.go", want "other.go"`},
+		{"related message", `error 0: related 1: message = "original declaration", want "other"`},
+		{"related line", "error 0: related 1: line = 3, want 4"},
+		{"related column", "error 0: related 1: column = 6, want 8"},
+		{"related count", "error 0: got 2 related locations, want 3:\n  b.go:2:6 primary declaration\n  a/original.go:3:6 original declaration"},
+		{"related empty", "error 0: got 2 related locations, want 0:\n  b.go:2:6 primary declaration\n  a/original.go:3:6 original declaration"},
+		{"related order", `error 0: related 0: message = "primary declaration", want "original declaration"`},
+		{"file related empty", "error 0: got 1 related locations, want 0:\n  p.go:1:6 declaration"},
+		{"file related line", "error 0: related 0: line = 1, want 2"},
 		{"filename", `filename = "p.go", want "other.go"`},
 		{"message", `message = "found", want "other"`},
 		{"message ID", `does not come from message ID "other"`},
@@ -234,8 +243,13 @@ func TestRunPackageFailures(t *testing.T) {
 			cmd := exec.Command(executable, "-test.run=^TestRunPackageFailures$")
 			cmd.Env = append(os.Environ(), "GOXLINT_PACKAGE_FAILURE="+tc.name)
 			out, err := cmd.CombinedOutput()
-			if err == nil || !strings.Contains(string(out), tc.message) {
-				t.Fatalf("want failure containing %q; got %v:\n%s", tc.message, err, out)
+			if err == nil {
+				t.Fatalf("want failure containing %q; got success:\n%s", tc.message, out)
+			}
+			for _, line := range strings.Split(tc.message, "\n") {
+				if !strings.Contains(string(out), strings.TrimSpace(line)) {
+					t.Errorf("want failure containing %q; got %v:\n%s", line, err, out)
+				}
 			}
 		})
 	}
@@ -254,7 +268,34 @@ func runPackageFailure(t *testing.T, scenario string) {
 		Files:  map[string]string{"p.go": "func f() {}"},
 		Errors: []goxlinttest.PackageError{{Filename: "p.go", MessageID: "found", Message: "found", Line: 1, Column: 6}},
 	}
+	if strings.HasPrefix(scenario, "related ") {
+		rule = relatedPackageRule()
+		c = relatedPackageCase()
+	}
 	switch scenario {
+	case "related filename":
+		c.Errors[0].Related[1].Filename = "other.go"
+	case "related message":
+		c.Errors[0].Related[1].Message = "other"
+	case "related line":
+		c.Errors[0].Related[1].Line = 4
+	case "related column":
+		c.Errors[0].Related[1].Column = 8
+	case "related count":
+		c.Errors[0].Related = append(c.Errors[0].Related, goxlinttest.RelatedError{})
+	case "related empty":
+		c.Errors[0].Related = []goxlinttest.RelatedError{}
+	case "related order":
+		c.Errors[0].Related[0], c.Errors[0].Related[1] = c.Errors[0].Related[1], c.Errors[0].Related[0]
+	case "file related empty", "file related line":
+		want := []goxlinttest.RelatedError{}
+		if scenario == "file related line" {
+			want = []goxlinttest.RelatedError{{Line: 2}}
+		}
+		goxlinttest.Run(t, relatedFileRule(), goxlinttest.Cases{Invalid: []goxlinttest.Case{{
+			Code: "func f() {}", Errors: []goxlinttest.Error{{Related: want}},
+		}}})
+		return
 	case "filename":
 		c.Errors[0].Filename = "other.go"
 	case "message":

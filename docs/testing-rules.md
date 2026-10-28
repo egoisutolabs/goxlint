@@ -59,9 +59,71 @@ with the zero value.
 | `Message` | The message is exactly this text. |
 | `Line` | The line of the start position, relative to `Code`. |
 | `Column` | The column of the start position, in bytes, starting at 1. |
+| `Related` | Optional. Supporting locations, in report order. Read [Related locations](#related-locations). |
 
 Use `MessageID` for most cases. Use `Message` to examine the values in the
 placeholders.
+
+## Related locations
+
+Set `Error.Related` or `PackageError.Related` to a list of
+`goxlinttest.RelatedError` values.
+
+- `nil` means that the test does not check related locations. Existing tests
+  need no changes.
+- A non-nil slice checks the exact number of related locations, in report
+  order. An empty slice, `[]goxlinttest.RelatedError{}`, checks that there are
+  no related locations.
+- In each entry, a zero field is not checked.
+
+| Field | Examines |
+| --- | --- |
+| `Filename` | The file name. The comparison uses forward slashes on all operating systems. |
+| `Message` | The message is exactly this text. |
+| `Line` | The start line in the source as written. |
+| `Column` | The start column, in bytes, starting at 1. |
+
+With `Run`, the line is relative to `Code`, before an added package clause.
+With `RunPackage`, the line is relative to the source in `Files` for the
+related file. That file can have a different package-clause prefix from the
+primary file.
+
+This example tests the example duplicate-function rule. The related file
+has no package clause:
+
+```go
+package rules
+
+import (
+	"testing"
+
+	"github.com/egoisutolabs/goxlint/examples/goxlint/plugins/maintainability"
+	"github.com/egoisutolabs/goxlint/goxlinttest"
+)
+
+func TestDuplicateRelated(t *testing.T) {
+	goxlinttest.RunPackage(t, maintainability.NoDuplicateFunctions, goxlinttest.PackageCases{
+		Invalid: []goxlinttest.PackageCase{{
+			Files: map[string]string{
+				"a.go": "func first(x int) int { return x + 1 }",
+				"b.go": "package p\nfunc second(y int) int { return y + 1 }",
+			},
+			Options: map[string]int{"minStatements": 1},
+			Errors: []goxlinttest.PackageError{{
+				Filename: "b.go", MessageID: "duplicate",
+				Related: []goxlinttest.RelatedError{{
+					Filename: "a.go", Message: "Existing function first.",
+					Line: 1, Column: 6,
+				}},
+			}},
+		}},
+	})
+}
+```
+
+A field mismatch names the diagnostic index and the related index. A count
+mismatch lists the actual related locations, with their file names, start
+positions, and messages.
 
 ## The code
 

@@ -66,7 +66,10 @@ func TestDuplicatesAcrossFilesAndImportAliases(t *testing.T) {
 				"b.go": "package p\nimport text \"strings\"\nfunc second(y string) string { return text.TrimSpace(y) }",
 			},
 			Options: map[string]int{"minStatements": 1},
-			Errors:  []goxlinttest.PackageError{{Filename: "b.go", MessageID: "duplicate", Message: "Function second duplicates first at a.go:3:6.", Line: 3, Column: 6}},
+			Errors: []goxlinttest.PackageError{{
+				Filename: "b.go", MessageID: "duplicate", Message: "Function second duplicates first at a.go:3:6.", Line: 3, Column: 6,
+				Related: []goxlinttest.RelatedError{{Filename: "a.go", Message: "Existing function first.", Line: 3, Column: 6}},
+			}},
 		}},
 	})
 }

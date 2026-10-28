@@ -235,6 +235,7 @@ the primary file.
 If one related range is invalid, goxlint replaces the whole report with an
 internal-error diagnostic. It does not keep the related locations or the fix.
 Other rules continue to run. See the [package rule example](package-rules.md#reports).
+Use `goxlinttest.RelatedError` to [test related locations](testing-rules.md#related-locations).
 
 ### Messages
 
