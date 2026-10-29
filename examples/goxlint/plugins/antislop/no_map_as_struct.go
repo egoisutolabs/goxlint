@@ -543,7 +543,29 @@ func checkMapParamsAndFields(pkg *goxlint.PackageContext) {
 	for changed := true; changed; {
 		changed = false
 		for _, ctx := range files {
+			// alias marks both sides of a map assignment dynamic when one side is.
+			alias := func(lhs, rhs ast.Expr) {
+				a, b := mapObject(ctx, lhs), mapObject(ctx, rhs)
+				if a == nil || b == nil || dynamic[a] == dynamic[b] {
+					return
+				}
+				dynamic[a], dynamic[b], changed = true, true, true
+			}
 			ast.Inspect(ctx.File, func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.AssignStmt:
+					if len(x.Lhs) == len(x.Rhs) {
+						for i := range x.Lhs {
+							alias(x.Lhs[i], x.Rhs[i])
+						}
+					}
+				case *ast.ValueSpec:
+					if len(x.Names) == len(x.Values) {
+						for i := range x.Names {
+							alias(x.Names[i], x.Values[i])
+						}
+					}
+				}
 				call, ok := n.(*ast.CallExpr)
 				if !ok {
 					return true
@@ -773,7 +795,10 @@ func calleeParams(ctx *goxlint.Context, call *ast.CallExpr, params map[*types.Fu
 func mapObject(ctx *goxlint.Context, expr ast.Expr) types.Object {
 	switch x := ast.Unparen(expr).(type) {
 	case *ast.Ident:
-		return ctx.TypesInfo.Uses[x]
+		if obj := ctx.TypesInfo.Uses[x]; obj != nil {
+			return obj
+		}
+		return ctx.TypesInfo.Defs[x]
 	case *ast.SelectorExpr:
 		return ctx.TypesInfo.Uses[x.Sel]
 	}

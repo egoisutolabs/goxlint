@@ -147,6 +147,13 @@ func dispatch(slots map[string]int, k string) int { return slots[k] + pair[int](
 func pair[M ~map[string]int](slots M) int { return slots["a"] + slots["b"] }
 
 func dispatch(slots map[string]int, k string) int { return slots[k] + pair(slots) }`)},
+			{Name: "shared map passed through a local alias", Files: file(`
+func pair(slots map[string]int) int { return slots["a"] + slots["b"] }
+
+func dispatch(m map[string]int, k string) int {
+	alias := m
+	return m[k] + pair(alias)
+}`)},
 			{Name: "exported field", Files: file(`
 type Config struct{ Opts map[string]string }
 
