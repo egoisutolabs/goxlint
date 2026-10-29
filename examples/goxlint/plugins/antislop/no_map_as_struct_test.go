@@ -112,6 +112,27 @@ func dispatch(slots map[string]int, kind string) int {
 	}
 	return pair(slots)
 }`)},
+			{Name: "shared map forwarded through a helper", Files: file(`
+func pair(slots map[string]int) int { return slots["a"] + slots["b"] }
+
+func wrapper(slots map[string]int) int { return pair(slots) }
+
+func dispatch(slots map[string]int, k string) int { return slots[k] + wrapper(slots) }`)},
+			{Name: "shared field passed to a helper", Files: file(`
+type s struct{ slots map[string]int }
+
+func pair(slots map[string]int) int { return slots["a"] + slots["b"] }
+
+func (x s) dispatch(k string) int { return x.slots[k] + pair(x.slots) }`)},
+			{Name: "loop variable modified", Files: file(`
+func f(m map[string]int, input string) int {
+	n := 0
+	for _, k := range []string{"a", "b"} {
+		k = input
+		n += m[k]
+	}
+	return n
+}`)},
 			{Name: "exported field", Files: file(`
 type Config struct{ Opts map[string]string }
 

@@ -550,16 +550,17 @@ func checkMapParamsAndFields(pkg *goxlint.PackageContext) {
 				}
 				objs := params[ctx.CalleeFunc(call)]
 				for i, arg := range call.Args {
-					id, ok := ast.Unparen(arg).(*ast.Ident)
-					if !ok || i >= len(objs) || objs[i] == nil {
+					obj := mapObject(ctx, arg)
+					if obj == nil || i >= len(objs) || objs[i] == nil {
 						continue
 					}
-					obj := ctx.TypesInfo.Uses[id]
-					if dynamic[objs[i]] && obj != nil && !dynamic[obj] {
+					if dynamic[objs[i]] && !dynamic[obj] {
 						dynamic[obj], changed = true, true
 					}
+					// A shared parameter is dynamic too, so a helper that it is
+					// forwarded to is shared as well.
 					if dynamic[obj] && !shared[objs[i]] {
-						shared[objs[i]], changed = true, true
+						shared[objs[i]], dynamic[objs[i]], changed = true, true, true
 					}
 				}
 				return true
@@ -684,8 +685,8 @@ func collectDynamicMaps(ctx *goxlint.Context, dynamic map[types.Object]bool) {
 		default:
 			return true
 		}
-		id, ok := ast.Unparen(target).(*ast.Ident)
-		if !ok || !isStringKeyMap(ctx.TypeOf(id)) {
+		obj := mapObject(ctx, target)
+		if obj == nil || !isStringKeyMap(obj.Type()) {
 			return true
 		}
 		if index != nil {
@@ -693,21 +694,55 @@ func collectDynamicMaps(ctx *goxlint.Context, dynamic map[types.Object]bool) {
 				return true
 			}
 		}
-		if obj := ctx.TypesInfo.Uses[id]; obj != nil {
-			dynamic[obj] = true
-		}
+		dynamic[obj] = true
 		return true
 	})
 }
 
-// rangesOverConstants reports whether r is `for _, v := range` over a literal of constant strings.
+// rangesOverConstants reports whether r is `for _, v := range` over a literal
+// of constant strings, and the loop body does not modify v.
 func rangesOverConstants(ctx *goxlint.Context, r *ast.RangeStmt) bool {
 	lit, ok := ast.Unparen(r.X).(*ast.CompositeLit)
-	if !ok || r.Tok != token.DEFINE {
+	v, isIdent := r.Value.(*ast.Ident)
+	if !ok || !isIdent || r.Tok != token.DEFINE {
 		return false
 	}
-	_, ok = constantStrings(ctx, lit)
-	return ok
+	if _, ok = constantStrings(ctx, lit); !ok {
+		return false
+	}
+	return !modifies(ctx, r.Body, ctx.TypesInfo.Defs[v])
+}
+
+// modifies reports whether body assigns to obj, increments it, or takes its address.
+func modifies(ctx *goxlint.Context, body ast.Node, obj types.Object) bool {
+	is := func(e ast.Expr) bool {
+		id, ok := ast.Unparen(e).(*ast.Ident)
+		return ok && obj != nil && ctx.TypesInfo.Uses[id] == obj
+	}
+	found := false
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.AssignStmt:
+			found = found || slices.ContainsFunc(x.Lhs, is)
+		case *ast.IncDecStmt:
+			found = found || is(x.X)
+		case *ast.UnaryExpr:
+			found = found || (x.Op == token.AND && is(x.X))
+		}
+		return !found
+	})
+	return found
+}
+
+// mapObject returns the variable or field that expr names, or nil.
+func mapObject(ctx *goxlint.Context, expr ast.Expr) types.Object {
+	switch x := ast.Unparen(expr).(type) {
+	case *ast.Ident:
+		return ctx.TypesInfo.Uses[x]
+	case *ast.SelectorExpr:
+		return ctx.TypesInfo.Uses[x.Sel]
+	}
+	return nil
 }
 
 // constantStrings returns the elements of a literal whose elements are all constant strings.
