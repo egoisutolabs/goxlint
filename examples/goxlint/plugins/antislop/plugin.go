@@ -20,6 +20,7 @@ var Plugin = goxlint.Plugin{
 		NoErrorStringMatching,
 		NoGenericPackageNames,
 		NoLogAndReturnError,
+		NoMapAsStruct,
 		NoPanicInLibrary,
 		NoPlaceholderComments,
 		NoPrintInLibrary,
