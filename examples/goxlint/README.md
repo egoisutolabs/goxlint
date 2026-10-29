@@ -29,6 +29,13 @@ go run ./examples/goxlint -W maintainability/cyclomatic-complexity \
   -W maintainability/no-duplicate-functions ./...
 ```
 
+The anti-slop rule `no-map-as-struct` is also opt-in. It finds string-keyed
+maps that are used as structs:
+
+```sh
+go run ./examples/goxlint -W anti-slop/no-map-as-struct ./...
+```
+
 See [maintainability rules](maintainability.md) for options and behavior, and
 [suppressions](../../docs/suppressions.md) for directive syntax.
 
