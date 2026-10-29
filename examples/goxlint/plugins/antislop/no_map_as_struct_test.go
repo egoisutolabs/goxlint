@@ -133,6 +133,20 @@ func f(m map[string]int, input string) int {
 	}
 	return n
 }`)},
+			{Name: "shared map passed through a method expression", Files: file(`
+type s struct{}
+
+func (s) pair(slots map[string]int) int { return slots["a"] + slots["b"] }
+
+func dispatch(slots map[string]int, k string) int { return slots[k] + s.pair(s{}, slots) }`)},
+			{Name: "shared map passed to an instantiated generic helper", Files: file(`
+func pair[T any](slots map[string]int) int { return slots["a"] + slots["b"] }
+
+func dispatch(slots map[string]int, k string) int { return slots[k] + pair[int](slots) }`)},
+			{Name: "shared map passed to an inferred generic helper", Files: file(`
+func pair[M ~map[string]int](slots M) int { return slots["a"] + slots["b"] }
+
+func dispatch(slots map[string]int, k string) int { return slots[k] + pair(slots) }`)},
 			{Name: "exported field", Files: file(`
 type Config struct{ Opts map[string]string }
 

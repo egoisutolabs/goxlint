@@ -524,7 +524,7 @@ func checkMapParamsAndFields(pkg *goxlint.PackageContext) {
 	}
 	var summaries map[types.Object]summary
 	paramKeys := func(ctx *goxlint.Context, call *ast.CallExpr, i int) ([]string, bool) {
-		objs := params[ctx.CalleeFunc(call)]
+		objs := calleeParams(ctx, call, params)
 		if i >= len(objs) || objs[i] == nil {
 			return nil, false
 		}
@@ -548,7 +548,7 @@ func checkMapParamsAndFields(pkg *goxlint.PackageContext) {
 				if !ok {
 					return true
 				}
-				objs := params[ctx.CalleeFunc(call)]
+				objs := calleeParams(ctx, call, params)
 				for i, arg := range call.Args {
 					obj := mapObject(ctx, arg)
 					if obj == nil || i >= len(objs) || objs[i] == nil {
@@ -732,6 +732,41 @@ func modifies(ctx *goxlint.Context, body ast.Node, obj types.Object) bool {
 		return !found
 	})
 	return found
+}
+
+// calleeParams returns the tracked parameters of the function that call
+// invokes, aligned with call.Args. It resolves explicit instantiations such as
+// f[int](m), and puts a nil first for the receiver in a method expression such
+// as T.f(t, m).
+func calleeParams(ctx *goxlint.Context, call *ast.CallExpr, params map[*types.Func][]types.Object) []types.Object {
+	fun := ast.Unparen(call.Fun)
+	switch x := fun.(type) {
+	case *ast.IndexExpr:
+		fun = x.X
+	case *ast.IndexListExpr:
+		fun = x.X
+	}
+	var id *ast.Ident
+	receiver := false
+	switch x := ast.Unparen(fun).(type) {
+	case *ast.Ident:
+		id = x
+	case *ast.SelectorExpr:
+		id = x.Sel
+		sel := ctx.TypesInfo.Selections[x]
+		receiver = sel != nil && sel.Kind() == types.MethodExpr
+	default:
+		return nil
+	}
+	fn, _ := ctx.TypesInfo.Uses[id].(*types.Func)
+	if fn == nil {
+		return nil
+	}
+	objs := params[fn.Origin()]
+	if receiver {
+		return append([]types.Object{nil}, objs...)
+	}
+	return objs
 }
 
 // mapObject returns the variable or field that expr names, or nil.
