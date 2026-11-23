@@ -1,0 +1,14 @@
+# Four typed linters. This set is a similar size to bench/goxlint-typed.json.
+# The linters are not the same checks.
+version: "2"
+run:
+  timeout: 0s
+  issues-exit-code: 0
+  allow-parallel-runners: true
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - unused

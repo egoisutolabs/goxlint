@@ -17,6 +17,7 @@ Read the documents in this order if you are new to goxlint.
 8. [Package rules](package-rules.md): examine all files of a package together.
 9. [go/analysis adapter](go-analysis.md): run rules with existing analysis drivers.
 10. [How goxlint works](how-goxlint-works.md): the internal order of operations.
+11. [Benchmarks](benchmarks.md): measure the engine, and compare a run with other linters.
 
 ## Packages
 

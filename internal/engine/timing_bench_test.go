@@ -10,7 +10,10 @@ import (
 	"github.com/egoisutolabs/goxlint/internal/engine"
 )
 
-// Set GOXLINT_BENCH_ROOT to use the same repository snapshot across revisions.
+// BenchmarkLintAllRepository measures LintAll on one repository snapshot.
+// Set GOXLINT_BENCH_ROOT to use the same files for two revisions.
+// The rule is defined here, so a change to an example plugin does not change
+// this result. Rule-count benchmarks are in bench_test.go.
 func BenchmarkLintAllRepository(b *testing.B) {
 	root := os.Getenv("GOXLINT_BENCH_ROOT")
 	if root == "" {

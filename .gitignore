@@ -1,6 +1,11 @@
 # Local reference checkouts (oxc, anti-slop). Not part of this project.
 /ref/
 
+# Benchmark clone, installed tools, and results. bench/compare.sh creates these.
+/bench/src/
+/bench/bin/
+/bench/out/
+
 # Build output
 *.test
 *.out
