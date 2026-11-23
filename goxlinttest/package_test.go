@@ -231,6 +231,7 @@ func TestRunPackageFailures(t *testing.T) {
 		{"bad report", "internal error in rule:"},
 		{"parse", "parse error:"},
 		{"type", "type error:"},
+		{"missing import", "type error:\nnope.example/missing"},
 		{"disabled type", "undefined: missing"},
 		{"mixed packages", "type error:"},
 		{"empty files", "package case must contain Files"},
@@ -334,6 +335,8 @@ func runPackageFailure(t *testing.T, scenario string) {
 		if scenario == "disabled type" {
 			c.FileOptions = map[string]any{"p.go": nil}
 		}
+	case "missing import":
+		c.Files["p.go"] = "import \"nope.example/missing\"\nfunc f() {}"
 	case "mixed packages":
 		c.Files["other.go"] = "package other"
 	case "empty files":
