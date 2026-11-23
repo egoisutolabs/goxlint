@@ -51,6 +51,7 @@ These documents use these terms with these meanings.
 | Suppression | A `//goxlint:ignore` comment. |
 | Syntax mode | goxlint parses files only. Rules do not get type information. |
 | Typed mode | goxlint loads packages and type-checks them. |
+| Use | One place where the source refers to an object. The type is `goxlint.Use`. |
 | Spec | The examples and the counterexamples for one rule. |
 | Example | In a spec, Go code that the rule must report. |
 | Counterexample | In a spec, Go code that the rule must not report. |

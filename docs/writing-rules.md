@@ -180,8 +180,10 @@ the same data.
 | `IsTestFile()` | `true` if the file name ends with `_test.go`. |
 | `TypeOf(expr)` | The type of the expression, or `nil` without type information. |
 | `ObjectOf(id)` | The object that the identifier refers to, or `nil` without type information. |
-| `CalleeFunc(call)` | The function or method that the call refers to, or `nil`. |
+| `ObjectOfExpr(expr)` | The object that an identifier or a selector names. This includes a definition. `nil` for other expressions and without type information. |
+| `CalleeFunc(call)` | The function or method that the call refers to, or `nil`. An explicit instantiation and a method expression are included. |
 | `IsPkgFunc(call, path, names...)` | `true` if the call is a call to one of the package-level functions `path.name`. |
+| `UsesOf(obj)` | The uses of the object in this file, in source order. `nil` when the rule does not set `NeedsTypes`. |
 
 `Parent` and `Ancestors` are correct only while a handler runs. Do not keep
 their results for later use.
@@ -322,8 +324,8 @@ Write the options of each rule in its documentation comment.
 ## Type information
 
 Set `NeedsTypes: true` to get type information. The context then has `Pkg` and
-`TypesInfo`, and `TypeOf`, `ObjectOf`, `CalleeFunc`, and `IsPkgFunc` return
-values.
+`TypesInfo`, and `TypeOf`, `ObjectOf`, `ObjectOfExpr`, `CalleeFunc`,
+`IsPkgFunc`, and `UsesOf` return values.
 
 ```go
 goxlint.On(func(call *ast.CallExpr) {
@@ -343,6 +345,66 @@ mode. Do not set `NeedsTypes` when the syntax tree is sufficient.
 
 If type information is not available for a file, goxlint does not run the rule on
 that file. This can occur when you call the engine without types.
+
+`CalleeFunc` returns the function or method that a call names. The call can be
+an explicit instantiation, such as `id[int](v)` or `pair[int, string](a, b)`.
+The call can be a method expression, such as `T.M(v)` or `(*T).M(v)`.
+
+## Uses of an object
+
+A use is one place where the source refers to an object. Call `UsesOf` with
+the object. `UsesOf` returns each use of a variable, a parameter, a field, or
+a function.
+
+Set `NeedsTypes` to `true` before you call `UsesOf`. When the rule does not
+set `NeedsTypes`, `UsesOf` returns nil.
+
+The uses are in source order. A definition is not a use. A field key in a
+struct literal (`T{F: v}`) is a use. The parent of that key is the key-value
+expression.
+
+| Field | Description |
+| --- | --- |
+| `Ident` | The identifier that refers to the object. |
+| `Expr` | The expression that refers to the object. This is the identifier, or the selector for a field or a qualified name. |
+| `Parent` | The node that contains `Expr`. goxlint skips parentheses. For `(m)["k"]`, `Parent` is the index expression and `Expr` is the identifier `m`. |
+| `Ctx` | The context of the file that contains the use. |
+
+Compare expressions with `ast.Unparen`. For `(m)["k"]`, the index expression
+contains a parenthesis node, and `Expr` is the identifier inside it.
+
+goxlint records the uses of a file on the first call to `UsesOf`. It records
+them one time. Every rule of that file shares the record. A rule that does not
+call `UsesOf` does not record them.
+
+`ObjectOfExpr` returns the object that an expression names. Pass an identifier
+or a selector (`x` or `x.F`). The object can be a definition or a use.
+`ObjectOfExpr` returns nil for a different expression, and when the rule does
+not set `NeedsTypes`.
+
+```go
+package rules
+
+import (
+	"go/ast"
+	"go/types"
+
+	"github.com/egoisutolabs/goxlint"
+)
+
+func indexed(ctx *goxlint.Context, obj types.Object) bool {
+	for _, use := range ctx.UsesOf(obj) {
+		index, ok := use.Parent.(*ast.IndexExpr)
+		if ok && ast.Unparen(index.X) == use.Expr {
+			return true
+		}
+	}
+	return false
+}
+```
+
+For the uses in every file of a package, read
+[Uses in a package](package-rules.md#uses-in-a-package).
 
 ## Test files
 
@@ -382,6 +444,7 @@ rules. These rules show:
 
 - Options with default values and `checkTests`.
 - Type information with `IsPkgFunc`, `CalleeFunc`, and `TypeOf`.
+- Uses of an object with `UsesOf` and `ObjectOfExpr`, in `no-map-as-struct`.
 - Comment analysis with `CommentsBefore` and `TrailingComment`.
 - Suggestion fixes.
 - A package rule with type information.
