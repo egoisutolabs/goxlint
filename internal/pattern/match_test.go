@@ -69,6 +69,8 @@ func TestMatchLanguage(t *testing.T) {
 			want:   false,
 		},
 		{name: "nested call", pat: `errors.New(fmt.Sprintf($*args))`, code: `errors.New(fmt.Sprintf("%d", 1))`, want: true, caps: map[string]int{"args": 2}},
+		{name: "division", pat: `$x / 2`, code: `a / 2`, want: true, caps: map[string]int{"x": 1}},
+		{name: "division differ", pat: `$x / 2`, code: `a / 3`, want: false},
 		{name: "switch case", pat: `switch $x { default: return $x }`, code: `switch n { default: return n }`, want: true, caps: map[string]int{"x": 1}},
 		{name: "string is not a variable", pat: `"$x"`, code: `"$x"`, want: true, caps: map[string]int{}},
 		{name: "string is not that variable", pat: `"$x"`, code: `"y"`, want: false},
@@ -190,6 +192,36 @@ func h(fmt fmtT) { fmt.Println(2) }
 	}
 }
 
+func TestImportPathLastElement(t *testing.T) {
+	const src = `package p
+import "encoding/json"
+import j "encoding/json"
+
+type jsonT struct{}
+
+func (jsonT) Marshal(v int) {}
+
+func g() { json.Marshal(1) }
+
+func h() { j.Marshal(2) }
+
+func i(json jsonT) { json.Marshal(3) }
+`
+	file, info := typeCheck(t, src)
+	p, err := Compile(`json.Marshal($x)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := matchedLits(p, file, info)
+	if len(got) != 2 || got[0] != "1" || got[1] != "2" {
+		t.Fatalf("with types got %v, want [1 2]", got)
+	}
+	got = matchedLits(p, file, nil)
+	if len(got) != 2 || got[0] != "1" || got[1] != "3" {
+		t.Fatalf("without types got %v, want [1 3]", got)
+	}
+}
+
 func TestCompileErrors(t *testing.T) {
 	_, err := Compile("fmt.Println(")
 	if err == nil || !strings.Contains(err.Error(), "pattern:1:") {
@@ -209,6 +241,12 @@ func TestCompileErrors(t *testing.T) {
 	}
 	if _, err := Compile(""); err == nil {
 		t.Fatal("empty pattern")
+	}
+	if _, err := Compile("/"); err == nil {
+		t.Fatal("bare slash")
+	}
+	if _, err := Compile("$x / 2"); err != nil {
+		t.Fatal(err)
 	}
 }
 

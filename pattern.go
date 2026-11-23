@@ -94,8 +94,9 @@ func newPattern(impl *pattern.Pattern) *Pattern {
 // OnMatch registers fn for each node that matches p.
 // The handler uses the node type of the pattern root, in the same walk as On.
 // Call OnMatch from Create. A rule with NeedsTypes then matches a package
-// selector by import path. Without type information, the selector matches the
-// written name.
+// selector by import path. The qualifier is the path or its last element, so
+// json.Marshal matches encoding/json, including a renamed import. Without
+// type information, the selector matches the written name.
 func OnMatch(p *Pattern, fn func(Match)) Handler {
 	if p == nil || fn == nil {
 		//goxlint:ignore anti-slop/no-panic-in-library a broken rule is a programming error

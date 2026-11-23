@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"path"
 	"reflect"
 )
 
@@ -82,10 +83,17 @@ func (p *Pattern) tryPkg(ps, ns *ast.SelectorExpr, caps map[string][]ast.Node, i
 		return false, true
 	}
 	pn, ok := info.ObjectOf(y).(*types.PkgName)
-	if !ok || pn.Imported() == nil || pn.Imported().Path() != x.Name {
+	if !ok || pn.Imported() == nil || !sameImport(pn.Imported().Path(), x.Name) {
 		return false, true
 	}
 	return p.matchNode(ps.Sel, ns.Sel, caps, info), true
+}
+
+// sameImport reports whether the pattern qualifier name names the import path.
+// The qualifier is the path itself or its last element, so json matches
+// encoding/json and fmt matches fmt. A renamed import still matches.
+func sameImport(importPath, name string) bool {
+	return importPath == name || path.Base(importPath) == name
 }
 
 func (p *Pattern) matchStruct(pv, nv reflect.Value, caps map[string][]ast.Node, info *types.Info) bool {

@@ -200,6 +200,9 @@ func rewrite(src string, callSingle bool) (rewritten, error) {
 				i = j
 				continue
 			}
+			writeSrc(i, i+1)
+			i++
+			continue
 		}
 		if src[i] != '$' {
 			start := i

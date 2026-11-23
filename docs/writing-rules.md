@@ -469,7 +469,7 @@ These patterns are valid:
 
 A selector such as `fmt.Println` has two meanings.
 
-- The rule sets `NeedsTypes`. The selector matches by import path. `import f "fmt"` then `f.Println(x)` matches. A call on a local value named `fmt` does not match.
+- The rule sets `NeedsTypes`. The selector matches by import path. The name in the pattern is the path, or the last element of the path. `import f "fmt"` then `f.Println(x)` matches. `json.Marshal` matches `encoding/json`. A renamed import matches too. A call on a local value named `json` does not match.
 - The rule does not set `NeedsTypes`. The selector matches the written name. A renamed import does not match. A local value with that name does match.
 
 A dot import does not match. The call has no package selector.
