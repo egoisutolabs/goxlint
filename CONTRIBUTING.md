@@ -73,7 +73,7 @@ go test ./...
 
 | Path | Contents |
 | --- | --- |
-| `rule.go`, `context.go` | The `goxlint` package: the rule API. |
+| `rule.go`, `context.go`, `pattern.go` | The `goxlint` package: the rule API. |
 | `goxlinttest/` | The `goxlinttest` package: the rule test harness. |
 | `cli/` | The `cli` package: the command-line runner. |
 | `internal/engine/` | Loading, the walk, the package phase, suppressions, and fixes. |

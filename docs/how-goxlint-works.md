@@ -111,6 +111,7 @@ the handlers of all rules.
 
 - goxlint visits only the node types that the rules registered. An interface
   handler, such as `ast.Stmt`, makes goxlint visit all nodes.
+- A pattern handler is a handler for the root node type of the pattern. goxlint calls it in this same walk.
 - goxlint lints different files at the same time.
 - If a rule causes a panic, goxlint stops that rule on that file and reports an
   internal error. Other rules continue.

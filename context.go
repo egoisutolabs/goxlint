@@ -8,6 +8,8 @@ import (
 	"go/token"
 	"go/types"
 	"strings"
+
+	"github.com/egoisutolabs/goxlint/internal/pattern"
 )
 
 // Data supplies values for {{key}} placeholders in message templates.
@@ -86,6 +88,7 @@ type Context struct {
 // NewContext is used by the engine. Rules receive a ready Context from Create.
 func NewContext(rule *Rule, ruleID string, fset *token.FileSet, file *ast.File, filename string, src []byte,
 	pkg *types.Package, info *types.Info, options json.RawMessage, stack *[]ast.Node, report func(Diagnostic)) *Context {
+	pattern.BindCreate(info)
 	return &Context{
 		Enabled: true,
 		Rule:    rule, RuleID: ruleID, Fset: fset, File: file, Filename: filename, Source: src,

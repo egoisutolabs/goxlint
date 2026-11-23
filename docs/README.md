@@ -44,6 +44,9 @@ These documents use these terms with these meanings.
 | Severity | `off`, `warn`, or `error`. The configuration sets the severity of each rule. |
 | Category | A group of rules, for example `correctness` or `style`. |
 | Fix | A set of text edits that a rule attaches to a diagnostic. |
+| Pattern | A compiled example of Go code with variables. |
+| Capture | The nodes that a pattern variable records. |
+| Exception | A pattern that removes a match. |
 | Suppression | A `//goxlint:ignore` comment. |
 | Syntax mode | goxlint parses files only. Rules do not get type information. |
 | Typed mode | goxlint loads packages and type-checks them. |

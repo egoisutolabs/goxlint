@@ -192,5 +192,6 @@ For all test settings, read [Testing rules](testing-rules.md).
 ## Next steps
 
 - Read [Writing rules](writing-rules.md) for the complete rule API.
+- Match code with a pattern. Read [Patterns](writing-rules.md#patterns).
 - Add a fix to your rule. Read [Fixes](fixes.md).
 - Read the example plugins in [`examples/goxlint/plugins`](../examples/goxlint/plugins).
