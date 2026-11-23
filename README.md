@@ -153,10 +153,11 @@ Linux, macOS, and Windows.
   yet ([#15](https://github.com/egoisutolabs/goxlint/issues/15)). The pieces it
   needs, such as stdin overlays and related locations, exist.
 - **You lint a very large repository on every keystroke.** There is no result
-  cache. Each run loads and lints everything again, and in typed mode most of
-  the time goes to loading packages. We have no benchmarks yet
-  ([#25](https://github.com/egoisutolabs/goxlint/issues/25)), so we make no
-  speed claims.
+  cache. Each run loads and lints everything again. In typed mode the load
+  step type-checks every dependency. [Benchmarks](docs/benchmarks.md) records
+  engine time on generated files. Compare a real repository with
+  `bench/compare.sh`
+  ([#25](https://github.com/egoisutolabs/goxlint/issues/25)).
 - **You need a stable API today.** goxlint is v0.x. The rule API can still
   change before v1.0.0, and each release says what changed.
 

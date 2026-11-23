@@ -1,0 +1,17 @@
+{
+  "categories": {
+    "correctness": "off",
+    "suspicious": "off",
+    "pedantic": "off",
+    "style": "off",
+    "restriction": "off",
+    "nursery": "off"
+  },
+  "rules": {
+    "anti-slop/no-blank-error": "warn",
+    "anti-slop/no-detached-context": "warn",
+    "anti-slop/no-error-string-matching": "warn",
+    "anti-slop/no-swallowed-error": "warn"
+  },
+  "reportUnusedSuppressions": "off"
+}

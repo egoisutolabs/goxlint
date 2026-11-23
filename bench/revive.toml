@@ -1,0 +1,13 @@
+# Five syntax rules. This set is a similar size to bench/goxlint-syntax.json.
+# The rules are not the same checks.
+ignore-generated-header = false
+severity = "warning"
+confidence = 0.8
+error-code = 0
+warning-code = 0
+
+[rule.blank-imports]
+[rule.context-as-argument]
+[rule.error-return]
+[rule.error-strings]
+[rule.unreachable-code]

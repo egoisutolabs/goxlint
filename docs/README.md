@@ -18,6 +18,7 @@ Read the documents in this order if you are new to goxlint.
 9. [Package rules](package-rules.md): examine all files of a package together.
 10. [go/analysis adapter](go-analysis.md): run rules with existing analysis drivers.
 11. [How goxlint works](how-goxlint-works.md): the internal order of operations.
+12. [Benchmarks](benchmarks.md): measure the engine, and compare a run with other linters.
 
 The repository also contains agent skills in [`skills/`](../skills). The install
 command is in [Getting started](getting-started.md#agent-skills).

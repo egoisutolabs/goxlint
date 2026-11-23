@@ -167,6 +167,8 @@ suppression comments.
 
 ## Performance
 
+Measured engine times are in [Benchmarks](benchmarks.md).
+
 Use [`--timing`](cli.md#rule-timing) to find expensive rules. The engine records
 callback durations in a separate map for each file or package worker. After
 the workers finish, it sums the maps by rule ID. The CLI adds the totals from

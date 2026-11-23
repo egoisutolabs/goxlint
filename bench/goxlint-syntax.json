@@ -1,0 +1,18 @@
+{
+  "categories": {
+    "correctness": "off",
+    "suspicious": "off",
+    "pedantic": "off",
+    "style": "off",
+    "restriction": "off",
+    "nursery": "off"
+  },
+  "rules": {
+    "anti-slop/no-generic-package-names": "warn",
+    "anti-slop/no-panic-in-library": "warn",
+    "anti-slop/no-placeholder-comments": "warn",
+    "anti-slop/no-restating-comments": "warn",
+    "anti-slop/require-safety-comment-for-type-assertion": "warn"
+  },
+  "reportUnusedSuppressions": "off"
+}
