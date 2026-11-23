@@ -269,3 +269,5 @@ apply build tags. It does not create Go test variants. Put a `_test.go` file in
 - Examine `Line` and `Column` in one or more cases. They make sure that the
   report is on the correct node.
 - Run the tests with `-race`.
+- Read [A rule from a spec](rule-from-a-spec.md). It shows one spec, the test
+  file, and the rule.

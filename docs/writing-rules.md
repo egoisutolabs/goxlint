@@ -121,8 +121,8 @@ interface.
 goxlint.On(func(s ast.Stmt) { /* each statement */ })
 ```
 
-**CAUTION:** An interface handler makes goxlint visit every node of the file.
-This is slower. Use concrete node types when possible.
+Register a concrete node type when one node type is enough. An interface
+type matches every node type that implements it.
 
 ### No handlers
 
@@ -435,6 +435,7 @@ Users can also turn rules off for test files with an override. Read
   suppress it or turn it off.
 - Run the rule on real code before you release it. Examine each report.
 - Test the rule. Read [Testing rules](testing-rules.md).
+- Read [A rule from a spec](rule-from-a-spec.md). It shows one spec, the test file, and the rule.
 
 ## Examples
 

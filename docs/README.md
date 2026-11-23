@@ -10,13 +10,17 @@ Read the documents in this order if you are new to goxlint.
 1. [Getting started](getting-started.md): make a linter and write your first rule.
 2. [Writing rules](writing-rules.md): the complete rule API.
 3. [Testing rules](testing-rules.md): test a rule with code samples.
-4. [Configuration](configuration.md): the `.goxlintrc.json` file.
-5. [Command line](cli.md): commands, flags, output formats, and exit codes.
-6. [Fixes](fixes.md): attach fixes to reports, and apply them.
-7. [Suppressions](suppressions.md): disable a rule for one line or one file.
-8. [Package rules](package-rules.md): examine all files of a package together.
-9. [go/analysis adapter](go-analysis.md): run rules with existing analysis drivers.
-10. [How goxlint works](how-goxlint-works.md): the internal order of operations.
+4. [A rule from a spec](rule-from-a-spec.md): one spec, its test file, and its rule.
+5. [Configuration](configuration.md): the `.goxlintrc.json` file.
+6. [Command line](cli.md): commands, flags, output formats, and exit codes.
+7. [Fixes](fixes.md): attach fixes to reports, and apply them.
+8. [Suppressions](suppressions.md): disable a rule for one line or one file.
+9. [Package rules](package-rules.md): examine all files of a package together.
+10. [go/analysis adapter](go-analysis.md): run rules with existing analysis drivers.
+11. [How goxlint works](how-goxlint-works.md): the internal order of operations.
+
+The repository also contains agent skills in [`skills/`](../skills). The install
+command is in [Getting started](getting-started.md#agent-skills).
 
 ## Packages
 
@@ -48,6 +52,9 @@ These documents use these terms with these meanings.
 | Syntax mode | goxlint parses files only. Rules do not get type information. |
 | Typed mode | goxlint loads packages and type-checks them. |
 | Use | One place where the source refers to an object. The type is `goxlint.Use`. |
+| Spec | The examples and the counterexamples for one rule. |
+| Example | In a spec, Go code that the rule must report. |
+| Counterexample | In a spec, Go code that the rule must not report. |
 
 ## Writing style
 

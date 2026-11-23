@@ -110,7 +110,8 @@ of each rule. Then it walks the syntax tree one time. During the walk, it calls
 the handlers of all rules.
 
 - goxlint visits only the node types that the rules registered. An interface
-  handler, such as `ast.Stmt`, makes goxlint visit all nodes.
+  handler, such as `ast.Stmt`, runs only for the node types that implement
+  the interface.
 - When a rule calls `UsesOf`, goxlint walks that file again and records each
   use. It records the uses one time for the file and shares them with the
   other rules.
@@ -150,8 +151,10 @@ Found 2 warnings and 1 error.
 Finished in 412ms on 38 files with 6 rules using 8 threads (typed mode).
 ```
 
-The rule count is the number of rules that the top-level configuration
-enables. Rules that only an override enables are not in the count.
+The rule count is the number of different rules enabled for one or more files
+in the run. A rule that only an override enables is in the count when that
+rule is enabled for a file. A rule that overrides turn off for every file in
+the run is not in the count. The count is zero when the run has no files.
 
 ## Positions
 
@@ -169,6 +172,7 @@ handler timers.
 
 - Keep rules in syntax mode when possible. Typed mode type-checks all
   dependencies.
-- Register concrete node types, not interface types.
+- Register a concrete node type when one node type is enough. An interface
+  type matches every node type that implements it.
 - Do expensive work only when a cheap test agrees. For example, compare a name
   before you get type information.

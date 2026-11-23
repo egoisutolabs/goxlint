@@ -951,3 +951,155 @@ func TestUnusedSuppressionsFollowFileOverrides(t *testing.T) {
 		t.Fatalf("audit did not use each file's enabled rules: %s", &stdout)
 	}
 }
+
+func TestSummaryCountsRulesEnabledForFiles(t *testing.T) {
+	for _, tc := range []struct {
+		name, config, stdin string
+		files               map[string]string
+		args                []string
+		code, filesN, rules int
+		want, absent        []string
+	}{
+		{
+			name:   "override only",
+			config: `{"overrides":[{"files":["internal/**"],"rules":{"test/rename":"error"}}]}`,
+			files: map[string]string{
+				"internal/a.go": "package internal\nvar bad = 1\n",
+				"other.go":      "package other\nvar bad = 1\n",
+			},
+			code: 1, filesN: 2, rules: 1,
+			want:   []string{"internal/a.go", "rename bad"},
+			absent: []string{"other.go"},
+		},
+		{
+			name:   "base only",
+			config: `{"rules":{"test/rename":"error"}}`,
+			files:  map[string]string{"a.go": "package p\nvar bad = 1\n"},
+			code:   1, filesN: 1, rules: 1,
+			want: []string{"a.go", "rename bad"},
+		},
+		{
+			name:   "same rule in base and override",
+			config: `{"rules":{"test/rename":"error"},"overrides":[{"files":["a.go"],"rules":{"test/rename":"warn"}}]}`,
+			files:  map[string]string{"a.go": "package p\nvar bad = 1\n"},
+			code:   0, filesN: 1, rules: 1,
+			want: []string{"a.go", "rename bad"},
+		},
+		{
+			name:   "base plus override-only rule",
+			config: `{"rules":{"test/rename":"warn"},"overrides":[{"files":["internal/**"],"rules":{"test/other":"error"}}]}`,
+			files: map[string]string{
+				"internal/a.go": "package internal\nvar bad = 1\nvar also = 2\n",
+				"other.go":      "package other\nvar bad = 1\n",
+			},
+			code: 1, filesN: 2, rules: 2,
+			want: []string{"internal/a.go", "other.go", "rename bad", "other finding"},
+		},
+		{
+			name:   "turned off for every file",
+			config: `{"rules":{"test/rename":"error"},"overrides":[{"files":["*.go"],"rules":{"test/rename":"off"}}]}`,
+			files: map[string]string{
+				"a.go": "package p\nvar bad = 1\n",
+				"b.go": "package p\nvar bad = 1\n",
+			},
+			code: 0, filesN: 2, rules: 0,
+			absent: []string{"rename bad"},
+		},
+		{
+			name:   "turned off for one file",
+			config: `{"rules":{"test/rename":"error"},"overrides":[{"files":["a.go"],"rules":{"test/rename":"off"}}]}`,
+			files: map[string]string{
+				"a.go": "package p\nvar bad = 1\n",
+				"b.go": "package p\nvar bad = 1\n",
+			},
+			code: 1, filesN: 2, rules: 1,
+			want:   []string{"b.go", "rename bad"},
+			absent: []string{"a.go"},
+		},
+		{
+			name:   "unmatched override",
+			config: `{"overrides":[{"files":["missing.go"],"rules":{"test/rename":"error"}}]}`,
+			files:  map[string]string{"a.go": "package p\nvar bad = 1\n"},
+			code:   0, filesN: 1, rules: 0,
+			absent: []string{"rename bad"},
+		},
+		{
+			name:   "no files",
+			config: `{"rules":{"test/rename":"error"}}`,
+			code:   0, filesN: 0, rules: 0,
+		},
+		{
+			name:   "ignored stdin",
+			config: `{"ignorePatterns":["a.go"],"rules":{"test/rename":"error"}}`,
+			args:   []string{"--stdin-filename=a.go"},
+			stdin:  "package p\nvar bad = 1\n",
+			code:   0, filesN: 0, rules: 0,
+			absent: []string{"rename bad"},
+		},
+		{
+			name:   "stdin counts only the supplied file",
+			config: `{"overrides":[{"files":["a.go"],"rules":{"test/rename":"error"}},{"files":["b.go"],"rules":{"test/other":"error"}}]}`,
+			files:  map[string]string{"b.go": "package p\nvar also = 1\n"},
+			args:   []string{"--stdin-filename=a.go"},
+			stdin:  "package p\nvar bad = 1\n",
+			code:   1, filesN: 1, rules: 1,
+			want:   []string{"a.go", "rename bad"},
+			absent: []string{"other finding", "b.go"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			writeTestFile(t, ".goxlintrc.json", tc.config)
+			for name, src := range tc.files {
+				name = filepath.FromSlash(name)
+				if dir := filepath.Dir(name); dir != "." {
+					if err := os.MkdirAll(dir, 0o755); err != nil {
+						t.Fatal(err)
+					}
+				}
+				writeTestFile(t, name, src)
+			}
+			plugin := testPlugin(false)
+			plugin.Rules = append(plugin.Rules, &goxlint.Rule{
+				Meta: goxlint.Meta{Name: "other", Category: goxlint.Style},
+				Create: func(ctx *goxlint.Context) goxlint.Visitor {
+					return goxlint.Visit(goxlint.On(func(id *ast.Ident) {
+						if id.Name == "also" {
+							ctx.Report(goxlint.Diagnostic{Node: id, Message: "other finding"})
+						}
+					}))
+				},
+			})
+			args := tc.args
+			if args == nil {
+				args = []string{"./..."}
+			}
+			var stdout, stderr bytes.Buffer
+			code := run(args, strings.NewReader(tc.stdin), &stdout, &stderr, plugin)
+			if code != tc.code || stderr.Len() != 0 {
+				t.Fatalf("exit %d, want %d: %s; %s", code, tc.code, &stdout, &stderr)
+			}
+			summary := fmt.Sprintf("on %s with %s using", summaryCount(tc.filesN, "file"), summaryCount(tc.rules, "rule"))
+			if !strings.Contains(stdout.String(), summary) {
+				t.Fatalf("summary %q not in output: %s", summary, &stdout)
+			}
+			for _, s := range tc.want {
+				if !strings.Contains(stdout.String(), s) {
+					t.Fatalf("missing %q: %s", s, &stdout)
+				}
+			}
+			for _, s := range tc.absent {
+				if strings.Contains(stdout.String(), s) {
+					t.Fatalf("unexpected %q: %s", s, &stdout)
+				}
+			}
+		})
+	}
+}
+
+func summaryCount(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return fmt.Sprintf("%d %ss", n, word)
+}
