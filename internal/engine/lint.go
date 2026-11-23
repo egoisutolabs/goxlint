@@ -112,6 +112,9 @@ type File struct {
 	// Package rules and the unused-suppression audit skip it, and the CLI
 	// applies no fixes to it.
 	Incomplete bool
+	// uses is the per-file use index. LintAll sets it. File rules and package
+	// rules share it, and the index is built on the first UsesOf call.
+	uses *useIndex
 }
 
 type handler struct {
@@ -160,7 +163,7 @@ func lintFile(f File, rules []ConfiguredRule, opts LintOptions, timings map[stri
 		report := func(d goxlint.Diagnostic) {
 			diags = append(diags, resolve(f, tokFile, cr, d, packageFiles))
 		}
-		ctx := goxlint.NewContext(cr.Rule, cr.ID, f.Fset, f.AST, f.Filename, f.Source, pkg, info, cr.Options, &stack, report)
+		ctx := goxlint.NewContext(cr.Rule, cr.ID, f.Fset, f.AST, f.Filename, f.Source, pkg, info, cr.Options, &stack, report, f.uses.lookup)
 		var start time.Time
 		if timings != nil {
 			start = time.Now()

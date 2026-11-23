@@ -25,6 +25,7 @@ package goxlint
 
 import (
 	"go/ast"
+	"go/types"
 	"reflect"
 )
 
@@ -112,6 +113,21 @@ type Rule struct {
 type PackageContext struct {
 	Name  string
 	Files []*Context
+}
+
+// UsesOf returns the uses of obj in all loaded files of the package,
+// ordered by filename, then position. Files where the rule is disabled are
+// included. Use.Ctx.Enabled reports which of those files run the rule.
+// It returns nil when obj is nil or obj has no uses.
+func (p *PackageContext) UsesOf(obj types.Object) []Use {
+	if obj == nil {
+		return nil
+	}
+	var out []Use
+	for _, file := range p.Files {
+		out = append(out, file.UsesOf(obj)...)
+	}
+	return out
 }
 
 // Plugin is a named set of rules. Rules are configured as "<plugin>/<rule>".

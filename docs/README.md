@@ -47,6 +47,7 @@ These documents use these terms with these meanings.
 | Suppression | A `//goxlint:ignore` comment. |
 | Syntax mode | goxlint parses files only. Rules do not get type information. |
 | Typed mode | goxlint loads packages and type-checks them. |
+| Use | One place where the source refers to an object. The type is `goxlint.Use`. |
 
 ## Writing style
 

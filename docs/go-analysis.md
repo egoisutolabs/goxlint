@@ -168,6 +168,8 @@ The analysis driver loads and type-checks packages. The adapter uses its
 syntax trees, file set, package, and type information. It does not load
 packages again. Syntax-only rules still receive no type information through
 the goxlint context, but the driver can incur the cost of type-checking.
+`UsesOf`, `ObjectOfExpr`, and `CalleeFunc` use the type information from the
+driver. They have the same result as in the command-line runner.
 
 The adapter reads source through `pass.ReadFile`. This supports unsaved editor
 buffers and virtual files. If an older driver does not supply `ReadFile`, the

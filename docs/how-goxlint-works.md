@@ -111,6 +111,9 @@ the handlers of all rules.
 
 - goxlint visits only the node types that the rules registered. An interface
   handler, such as `ast.Stmt`, makes goxlint visit all nodes.
+- When a rule calls `UsesOf`, goxlint walks that file again and records each
+  use. It records the uses one time for the file and shares them with the
+  other rules.
 - goxlint lints different files at the same time.
 - If a rule causes a panic, goxlint stops that rule on that file and reports an
   internal error. Other rules continue.
