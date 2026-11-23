@@ -110,7 +110,8 @@ of each rule. Then it walks the syntax tree one time. During the walk, it calls
 the handlers of all rules.
 
 - goxlint visits only the node types that the rules registered. An interface
-  handler, such as `ast.Stmt`, makes goxlint visit all nodes.
+  handler, such as `ast.Stmt`, runs only for the node types that implement
+  the interface.
 - goxlint lints different files at the same time.
 - If a rule causes a panic, goxlint stops that rule on that file and reports an
   internal error. Other rules continue.
@@ -168,6 +169,7 @@ handler timers.
 
 - Keep rules in syntax mode when possible. Typed mode type-checks all
   dependencies.
-- Register concrete node types, not interface types.
+- Register a concrete node type when one node type is enough. An interface
+  type matches every node type that implements it.
 - Do expensive work only when a cheap test agrees. For example, compare a name
   before you get type information.

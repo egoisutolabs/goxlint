@@ -153,6 +153,32 @@ func TestTimingSkipsUnrunRules(t *testing.T) {
 	}
 }
 
+func TestTimingInterfaceHandlerAttribution(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := packageFile(t, "p/a.go", "package p\nfunc f() { return }\n")
+		var stmtElapsed, exprElapsed time.Duration
+		work := func(elapsed *time.Duration) {
+			start := time.Now()
+			time.Sleep(time.Millisecond)
+			*elapsed += time.Since(start)
+		}
+		stmtRule := &goxlint.Rule{Create: func(*goxlint.Context) goxlint.Visitor {
+			return goxlint.Visit(goxlint.On(func(ast.Stmt) { work(&stmtElapsed) }))
+		}}
+		exprRule := &goxlint.Rule{Create: func(*goxlint.Context) goxlint.Visitor {
+			return goxlint.Visit(goxlint.OnExit(func(ast.Expr) { work(&exprElapsed) }))
+		}}
+		var measured map[string]time.Duration
+		diags := LintFile(f, []ConfiguredRule{
+			{ID: "t/stmt", Rule: stmtRule, Severity: Warn},
+			{ID: "t/expr", Rule: exprRule, Severity: Warn},
+		}, LintOptions{Timing: true, OnTiming: func(timings map[string]time.Duration) { measured = timings }})
+		if len(diags) != 0 || stmtElapsed <= 0 || exprElapsed <= 0 || len(measured) != 2 || measured["t/stmt"] != stmtElapsed || measured["t/expr"] != exprElapsed {
+			t.Fatalf("interface timing: diags=%v measured=%v stmt=%s expr=%s", diags, measured, stmtElapsed, exprElapsed)
+		}
+	})
+}
+
 func TestTimingOptionalAndDiagnosticsUnchanged(t *testing.T) {
 	f := packageFile(t, "p/a.go", "package p\nvar bad = 1\n")
 	rules := []ConfiguredRule{{ID: "t/ident", Rule: identRule, Severity: Warn}}
