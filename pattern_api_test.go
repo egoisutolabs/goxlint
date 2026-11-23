@@ -295,7 +295,7 @@ func TestReplaceMatchUnknownCapture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := goxlint.NewContext(nil, "t/t", fset, file, "p.go", src, nil, nil, nil, nil, func(goxlint.Diagnostic) {})
+	ctx := goxlint.NewContext(nil, "t/t", fset, file, "p.go", src, nil, nil, nil, nil, func(goxlint.Diagnostic) {}, nil)
 	defer func() {
 		err, ok := recover().(error)
 		if !ok || !strings.Contains(err.Error(), "unknown capture") {
@@ -312,7 +312,7 @@ func TestReplaceMatchDollarEscape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := goxlint.NewContext(nil, "t/t", fset, file, "p.go", src, nil, nil, nil, nil, func(goxlint.Diagnostic) {})
+	ctx := goxlint.NewContext(nil, "t/t", fset, file, "p.go", src, nil, nil, nil, nil, func(goxlint.Diagnostic) {}, nil)
 	edit := ctx.ReplaceMatch(goxlint.Match{
 		Node:     file.Name,
 		Captures: map[string][]ast.Node{"x": {file.Name}},

@@ -42,6 +42,28 @@ func TestOnMatchSharesTheWalk(t *testing.T) {
 	}
 }
 
+func TestWildcardOnMatchUsesOneWalk(t *testing.T) {
+	var files int
+	var matches int
+	pat := goxlint.MustPattern(`$x`)
+	rule := &goxlint.Rule{
+		Meta: goxlint.Meta{Name: "wild"},
+		Create: func(ctx *goxlint.Context) goxlint.Visitor {
+			return goxlint.Visit(
+				goxlint.On(func(*ast.File) { files++ }),
+				goxlint.OnMatch(pat, func(goxlint.Match) { matches++ }),
+			)
+		},
+	}
+	lintSource(t, "package p\nfunc f() { f() }\n", rule)
+	if files != 1 {
+		t.Fatalf("file visits = %d, want 1", files)
+	}
+	if matches == 0 {
+		t.Fatal("wildcard pattern did not match")
+	}
+}
+
 func BenchmarkOnMatchSingleWalk(b *testing.B) {
 	pat := goxlint.MustPattern(`fmt.Println($*_)`)
 	src := "package p\nimport \"fmt\"\nfunc f() {\n\tfmt.Println(1)\n\tfmt.Println(2)\n}\n"

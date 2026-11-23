@@ -269,8 +269,9 @@ func (r *Resolved) RulesFor(path string, reg *Registry) []engine.ConfiguredRule 
 	return build(settings, reg)
 }
 
-// AllRules returns every rule enabled anywhere in the config, used to decide
-// whether type information is needed.
+// AllRules returns the rules enabled by the base configuration.
+// Rules that only an override enables are not included.
+// AnyOverrideNeedsTypes reports override rules that need type information.
 func (r *Resolved) AllRules() []*goxlint.Rule {
 	var out []*goxlint.Rule
 	for _, cr := range r.base {

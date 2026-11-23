@@ -83,16 +83,33 @@ type Context struct {
 	options json.RawMessage
 	stack   *[]ast.Node
 	report  func(Diagnostic)
+	// uses is the shared per-file index. The engine passes one function to
+	// every rule of a file. Nil when the file has no index.
+	uses func(obj types.Object) []Use
+}
+
+// Use is one place where an object is referenced.
+type Use struct {
+	Ident *ast.Ident
+	// Expr is the expression that refers to the object: Ident, or the
+	// *ast.SelectorExpr for a field or a qualified name.
+	Expr ast.Expr
+	// Parent is the node that contains Expr (parentheses are skipped).
+	Parent ast.Node
+	// Ctx is the file that contains the use.
+	Ctx *Context
 }
 
 // NewContext is used by the engine. Rules receive a ready Context from Create.
+// uses reports the uses of an object in this file. Pass the same function for
+// every rule of a file so they share one index. It may be nil.
 func NewContext(rule *Rule, ruleID string, fset *token.FileSet, file *ast.File, filename string, src []byte,
-	pkg *types.Package, info *types.Info, options json.RawMessage, stack *[]ast.Node, report func(Diagnostic)) *Context {
+	pkg *types.Package, info *types.Info, options json.RawMessage, stack *[]ast.Node, report func(Diagnostic), uses func(types.Object) []Use) *Context {
 	pattern.BindCreate(info)
 	return &Context{
 		Enabled: true,
 		Rule:    rule, RuleID: ruleID, Fset: fset, File: file, Filename: filename, Source: src,
-		Pkg: pkg, TypesInfo: info, options: options, stack: stack, report: report,
+		Pkg: pkg, TypesInfo: info, options: options, stack: stack, report: report, uses: uses,
 	}
 }
 
@@ -212,18 +229,62 @@ func (c *Context) ObjectOf(id *ast.Ident) types.Object {
 	return c.TypesInfo.ObjectOf(id)
 }
 
-// CalleeFunc returns the function or method a call statically invokes, or nil.
-func (c *Context) CalleeFunc(call *ast.CallExpr) *types.Func {
-	var id *ast.Ident
-	switch fun := ast.Unparen(call.Fun).(type) {
+// ObjectOfExpr returns the object that expr names.
+// An identifier names its definition or the object it uses.
+// A selector x.f names the field, method, or qualified object f.
+// Any other expression returns nil, as does a rule without type information.
+func (c *Context) ObjectOfExpr(expr ast.Expr) types.Object {
+	if c.TypesInfo == nil || expr == nil {
+		return nil
+	}
+	switch x := ast.Unparen(expr).(type) {
 	case *ast.Ident:
-		id = fun
+		if obj := c.TypesInfo.Uses[x]; obj != nil {
+			return obj
+		}
+		return c.TypesInfo.Defs[x]
 	case *ast.SelectorExpr:
-		id = fun.Sel
+		return c.TypesInfo.Uses[x.Sel]
 	default:
 		return nil
 	}
-	fn, _ := c.ObjectOf(id).(*types.Func)
+}
+
+// UsesOf returns the uses of obj in this file, in source order.
+// It returns nil when the rule does not set Meta.NeedsTypes, when obj is nil,
+// or when obj has no uses in this file.
+func (c *Context) UsesOf(obj types.Object) []Use {
+	if c.TypesInfo == nil || c.uses == nil || obj == nil {
+		return nil
+	}
+	found := c.uses(obj)
+	if len(found) == 0 {
+		return nil
+	}
+	out := make([]Use, len(found))
+	for i := range found {
+		out[i] = found[i]
+		out[i].Ctx = c
+	}
+	return out
+}
+
+// CalleeFunc returns the function or method a call statically invokes, or nil.
+// An explicit instantiation (f[T](x), f[T, U](x)) and a method expression
+// (T.M(v), (*T).M(v)) resolve to that function. A method of an instantiated
+// generic type is the instance go/types records; Origin returns the declaration.
+func (c *Context) CalleeFunc(call *ast.CallExpr) *types.Func {
+	if call == nil {
+		return nil
+	}
+	fun := ast.Unparen(call.Fun)
+	switch x := fun.(type) {
+	case *ast.IndexExpr:
+		fun = ast.Unparen(x.X)
+	case *ast.IndexListExpr:
+		fun = ast.Unparen(x.X)
+	}
+	fn, _ := c.ObjectOfExpr(fun).(*types.Func)
 	return fn
 }
 

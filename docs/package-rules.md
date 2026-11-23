@@ -146,6 +146,38 @@ variant of the package. That variant has different type-checking data.
 goxlint does not run a package rule with `NeedsTypes` if one file of the package
 has no type information.
 
+## Uses in a package
+
+`PackageContext.UsesOf` returns the uses of an object in every loaded file of
+the package. The order is the file name, then the position in the file.
+`Files` has the same file order.
+
+A file where the rule is off is included. `Use.Ctx` is the context of that
+file. `Use.Ctx.Enabled` is false when the rule is off for the file.
+
+`Parent` and `Ancestors` are empty in a package rule. `UsesOf` still reports
+the parent of each use. Read [Uses of an object](writing-rules.md#uses-of-an-object).
+
+```go
+package rules
+
+import (
+	"go/types"
+
+	"github.com/egoisutolabs/goxlint"
+)
+
+func enabledUses(pkg *goxlint.PackageContext, obj types.Object) []goxlint.Use {
+	var uses []goxlint.Use
+	for _, use := range pkg.UsesOf(obj) {
+		if use.Ctx.Enabled {
+			uses = append(uses, use)
+		}
+	}
+	return uses
+}
+```
+
 ## When goxlint does not run a package rule
 
 goxlint does not run a package rule on a package in these conditions:
@@ -163,7 +195,8 @@ are not affected.
   packages at the same time.
 - Do not change syntax trees, source, type information, or metadata.
 - `Parent` and `Ancestors` are empty in a package rule. Walk the AST yourself,
-  for example with `ast.Inspect`.
+  for example with `ast.Inspect`. For the parent of each use, call `UsesOf`.
+  Read [Uses in a package](#uses-in-a-package).
 
 ## Panics
 

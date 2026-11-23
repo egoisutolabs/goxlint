@@ -6,10 +6,13 @@ goxlint reads its configuration from a JSON file with the name `.goxlintrc.json`
 
 goxlint starts in the current directory. It looks for `.goxlintrc.json` in that
 directory and then in each parent directory. goxlint uses the first file that it
-finds. To use a different file, give the `-c` flag.
+finds. To use a different file, give the `-c` flag. To start the search in
+another directory, give the `-C` flag. Read
+[Run from another directory](cli.md#run-from-another-directory).
 
 Paths in the file are relative to the directory that contains the file. If
-there is no file, paths are relative to the current directory.
+there is no file, paths are relative to the current directory. The `-C` flag
+selects that directory.
 
 If goxlint finds no file, it uses this configuration:
 

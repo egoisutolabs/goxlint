@@ -70,6 +70,24 @@ go run github.com/egoisutolabs/goxlint/examples/goxlint@latest ./...
 
 Then write your first rule with [Getting started](docs/getting-started.md).
 
+## Agent skills
+
+Coding agents can install goxlint skills from this repository:
+
+```sh
+npx skills add egoisutolabs/goxlint
+```
+
+`npx skills` is the [Agent Skills](https://agentskills.io) installer. It needs
+Node.js 22.20 or later. It reads `skills/*/SKILL.md` from this repository and
+installs the skills into the agents it supports, including Claude Code, Codex,
+Cursor, and OpenCode. It does not add a Go dependency.
+
+`goxlint-setup` adds a linter command, `.goxlintrc.json`, a CI step, and a hook
+that lints edited Go files. `goxlint-write-rule` turns a convention into a
+tested rule. Install one skill with `--skill goxlint-setup` or
+`--skill goxlint-write-rule`.
+
 ## What goxlint does well
 
 **One walk for every rule.** Rules don't traverse the AST. They register
