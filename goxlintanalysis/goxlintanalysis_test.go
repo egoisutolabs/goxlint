@@ -58,6 +58,22 @@ func TestVisitorAndSuppressions(t *testing.T) {
 	}
 }
 
+func TestUsesOf(t *testing.T) {
+	rule := &goxlint.Rule{
+		Meta: goxlint.Meta{Name: "uses", NeedsTypes: true},
+		Create: func(ctx *goxlint.Context) goxlint.Visitor {
+			return goxlint.Visit(goxlint.On(func(id *ast.Ident) {
+				obj := ctx.TypesInfo.Defs[id]
+				if obj == nil || id.Name != "x" {
+					return
+				}
+				ctx.Report(goxlint.Diagnostic{Node: id, Message: fmt.Sprintf("uses %d", len(ctx.UsesOf(obj)))})
+			}))
+		},
+	}
+	analysistest.Run(t, analysistest.TestData(), goxlintanalysis.Analyzer("acme", rule), "uses")
+}
+
 func TestPackageRule(t *testing.T) {
 	rule := &goxlint.Rule{Meta: goxlint.Meta{Name: "package-check", NeedsTypes: true}, AnalyzePackage: func(pkg *goxlint.PackageContext) {
 		for _, ctx := range pkg.Files {

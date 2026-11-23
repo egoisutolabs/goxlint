@@ -9,7 +9,7 @@ Your linter gets its command line from `cli.Main`. This document uses the name
 | --- | --- |
 | `goxlint [flags] [patterns]` | Lint the packages or files that the patterns select. |
 | `goxlint rules [flags]` | Show a table or JSON array of registered rules. |
-| `goxlint init` | Write `.goxlintrc.json` in the current directory. |
+| `goxlint init` | Write `.goxlintrc.json` in the current directory. `-C` selects another directory. |
 | `goxlint -h` | Show the usage text. |
 
 ### Lint
@@ -30,6 +30,40 @@ can put flags before or after the patterns.
 | `dir` | The package in `dir` only. |
 | `file.go` | One file. In typed mode, goxlint loads the package that contains the file. |
 
+### Run from another directory
+
+Use `-C` to select the directory for the run. goxlint uses this directory before
+it reads the configuration and before it loads packages. The flag has the same
+role as `go -C`.
+
+```sh
+goxlint -C ../.. ./...
+```
+
+Run that command from the directory of your linter module. The command lints
+the repository root.
+
+goxlint resolves paths from the directory that `-C` selects. It searches for
+`.goxlintrc.json` from that directory. A relative `-c` path starts in that
+directory. Package patterns and file patterns start in that directory. A
+relative `--stdin-filename` starts in that directory. Output paths are relative
+to that directory. SARIF paths use the repository root. goxlint searches for
+that root from the directory that `-C` selects. Read [sarif](#sarif).
+`goxlint init` writes `.goxlintrc.json` in that directory.
+`goxlint rules` reads the configuration from that directory.
+
+`-C` selects a directory. `-c` selects a configuration file. You can put `-C`
+before or after the patterns. You can also put it before or after other flags.
+
+```sh
+goxlint ./... -C ../..
+goxlint rules -C ../.. --format json
+goxlint init -C ../..
+```
+
+If the directory does not exist, or the path is not a directory, goxlint exits
+with code `2`.
+
 ### Source from stdin
 
 Use `--stdin-filename` to lint an unsaved Go buffer:
@@ -39,13 +73,15 @@ cat handler.go | goxlint --stdin-filename internal/api/handler.go
 cat handler.go | goxlint --stdin-filename internal/api/handler.go --format json
 ```
 
-The filename can be relative to the working directory or absolute. The source
-from stdin replaces the contents on disk for this run. The file does not need
-to exist. Do not give package or file patterns with this flag. This is a usage
-error with exit code `2`.
+The filename can be relative to the working directory or absolute. With `-C`,
+a relative filename starts in the selected directory. The source from stdin
+replaces the contents on disk for this run. The file does not need to exist.
+Do not give package or file patterns with this flag. This is a usage error
+with exit code `2`.
 
 Configuration discovery starts in the working directory, as for a normal run.
-Use `-c` to select another configuration file. The supplied filename selects
+With `-C`, discovery starts in the selected directory. Use `-c` to select
+another configuration file. The supplied filename selects
 file overrides, ignore patterns, and `_test.go` behavior. An ignored filename
 produces no diagnostics and exits with `0`. Generated-file checks and
 suppression comments use the source from stdin.
@@ -59,7 +95,8 @@ are also shown and cause exit code `1`, even with `--quiet`. Package load
 errors still go to stderr and cause exit code `2`.
 
 The summary counts only the supplied file if it was loaded. It does not count
-supporting files. An ignored or skipped buffer counts as zero files.
+supporting files. The rule count uses only the rules enabled for the supplied
+file. An ignored or skipped buffer counts as zero files and zero rules.
 
 Without a fix flag, diagnostics go to stdout in the selected format. With
 `--fix`, `--fix-suggestions`, or `--fix-dangerously`, **stdout contains only the
@@ -111,9 +148,10 @@ goxlint rules --format json -c ./config/.goxlintrc.json
 
 ### init
 
-`goxlint init` writes `.goxlintrc.json` in the current directory. The file enables
-the `correctness` category with `warn`, and sets each registered rule to
-`error`. If the file exists, the command does not change it and exits with `2`.
+`goxlint init` writes `.goxlintrc.json` in the current directory. Use `-C` to
+select another directory. The file enables the `correctness` category with
+`warn`, and sets each registered rule to `error`. If the file exists, the
+command does not change it and exits with `2`.
 
 ## Flags
 
@@ -122,6 +160,7 @@ the `correctness` category with `warn`, and sets each registered rule to
 | Flag | Value | Action |
 | --- | --- | --- |
 | `--stdin-filename` | path | Read a Go buffer from stdin at this filename. Do not give patterns. |
+| `-C` | directory | Select the directory for the run before config discovery. Relative paths start in this directory. |
 | `-c` | path | Use this configuration file. If you do not use `-c`, goxlint finds the nearest `.goxlintrc.json`. |
 | `-D` | rule or category | Set the severity to `error`. You can use the flag more than one time. |
 | `-W` | rule or category | Set the severity to `warn`. You can use the flag more than one time. |
@@ -201,6 +240,7 @@ valid. Without `--timing`, goxlint does not collect rule times.
 
 Diagnostic file paths use forward slashes (`/`) on every operating system,
 including Windows. Paths within the working directory are relative to it.
+The `-C` flag selects that directory.
 Other paths stay absolute. For SARIF paths, read [sarif](#sarif). A directory
 named `..foo` inside the working directory also uses a relative path.
 
@@ -322,8 +362,9 @@ when there are no related locations.
 
 SARIF file URIs are relative to the repository root. The repository root is
 the nearest parent directory that contains `.git`. `.git` can be a directory
-or a file. Git worktrees and submodules use a `.git` file. When goxlint finds
-no `.git`, URIs are relative to the working directory.
+or a file. Git worktrees and submodules use a `.git` file. goxlint starts
+the search in the directory of the run. The `-C` flag selects that directory.
+When goxlint finds no `.git`, URIs are relative to that directory.
 
 A directory named `..foo` uses a relative URI when it is inside the root.
 Files outside the root use an absolute `file:` URI on every operating system.
@@ -400,10 +441,11 @@ The repository must have code scanning available. For access requirements,
 read [Uploading a SARIF file to GitHub](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/integrate-with-existing-tools/upload-sarif-file).
 
 GitHub code scanning reads SARIF paths from the repository root. goxlint
-writes those paths when `.git` is in the working directory or in a parent
-directory. You can run goxlint in a subdirectory. A diagnostic for
-`handler.go` with `working-directory: ./service` uses the URI
-`service/handler.go`.
+writes those paths when `.git` is in the directory of the run or in a parent
+directory. The `-C` flag selects the directory of the run. You can run
+goxlint in a subdirectory. A diagnostic for `handler.go` with
+`working-directory: ./service` uses the URI `service/handler.go`.
+`goxlint -C service` from the repository root uses the same URI.
 
-**CAUTION:** When goxlint finds no `.git`, paths stay relative to the working
-directory. Run goxlint from the repository root in that case.
+**CAUTION:** When goxlint finds no `.git`, paths stay relative to the
+directory of the run. Run goxlint from the repository root in that case.

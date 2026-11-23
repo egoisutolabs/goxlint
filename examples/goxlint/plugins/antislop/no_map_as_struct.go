@@ -111,26 +111,33 @@ func checkMapLocals(ctx *goxlint.Context, body *ast.BlockStmt) {
 	if len(records) == 0 {
 		return
 	}
+	// Value types come from assignments. UsesOf reports the index, not the
+	// assignment that contains it, so the types are collected first.
+	rhsType := map[*ast.IndexExpr]types.Type{}
 	ast.Inspect(body, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.AssignStmt:
-			for i, lhs := range x.Lhs {
-				if r, key, ok := recordIndex(ctx, records, lhs); ok && len(x.Lhs) == len(x.Rhs) {
-					r.add(key, ctx.TypeOf(x.Rhs[i]))
-				}
-			}
-		case *ast.IndexExpr:
-			if r, key, ok := recordIndex(ctx, records, x); ok {
-				r.add(key, nil)
-				return false
-			}
-		case *ast.Ident:
-			if r := records[ctx.TypesInfo.Uses[x]]; r != nil {
-				r.escapes = true
+		as, ok := n.(*ast.AssignStmt)
+		if !ok || len(as.Lhs) != len(as.Rhs) {
+			return true
+		}
+		for i, lhs := range as.Lhs {
+			if ix, ok := ast.Unparen(lhs).(*ast.IndexExpr); ok {
+				rhsType[ix] = ctx.TypeOf(as.Rhs[i])
 			}
 		}
 		return true
 	})
+	for _, obj := range order {
+		r := records[obj]
+		for _, use := range ctx.UsesOf(obj) {
+			if ix, ok := use.Parent.(*ast.IndexExpr); ok && sameExpr(ix.X, use.Expr) {
+				if key, ok := constantString(ctx, ix.Index); ok {
+					r.add(key, rhsType[ix])
+					continue
+				}
+			}
+			r.escapes = true
+		}
+	}
 	for _, obj := range order {
 		r := records[obj]
 		if r.escapes || len(r.keys) < 2 {
@@ -266,27 +273,6 @@ func mapInit(ctx *goxlint.Context, init ast.Expr, r *mapRecord) bool {
 		return true
 	}
 	return false
-}
-
-// recordIndex reports whether expr is m["key"] for a tracked map m and a constant key.
-func recordIndex(ctx *goxlint.Context, records map[types.Object]*mapRecord, expr ast.Expr) (*mapRecord, string, bool) {
-	ix, ok := ast.Unparen(expr).(*ast.IndexExpr)
-	if !ok {
-		return nil, "", false
-	}
-	id, ok := ast.Unparen(ix.X).(*ast.Ident)
-	if !ok {
-		return nil, "", false
-	}
-	r := records[ctx.TypesInfo.Uses[id]]
-	if r == nil {
-		return nil, "", false
-	}
-	key, ok := constantString(ctx, ix.Index)
-	if !ok {
-		return nil, "", false
-	}
-	return r, key, true
 }
 
 type mapLiteral struct {
@@ -545,7 +531,7 @@ func checkMapParamsAndFields(pkg *goxlint.PackageContext) {
 		for _, ctx := range files {
 			// alias marks both sides of a map assignment dynamic when one side is.
 			alias := func(lhs, rhs ast.Expr) {
-				a, b := mapObject(ctx, lhs), mapObject(ctx, rhs)
+				a, b := ctx.ObjectOfExpr(lhs), ctx.ObjectOfExpr(rhs)
 				if a == nil || b == nil || dynamic[a] == dynamic[b] {
 					return
 				}
@@ -572,7 +558,7 @@ func checkMapParamsAndFields(pkg *goxlint.PackageContext) {
 				}
 				objs := calleeParams(ctx, call, params)
 				for i, arg := range call.Args {
-					obj := mapObject(ctx, arg)
+					obj := ctx.ObjectOfExpr(arg)
 					if obj == nil || i >= len(objs) || objs[i] == nil {
 						continue
 					}
@@ -619,71 +605,88 @@ func checkMapParamsAndFields(pkg *goxlint.PackageContext) {
 	}
 }
 
-// scanMapUses records how each tracked map is used in one file. An identifier
-// that refers to a tracked map is an escape unless its parent node is an
-// allowed use: an index with a constant key, an argument to a tracked
-// parameter, a whole-value assignment, or a struct literal key.
+// scanMapUses records how each tracked map is used in one file. A use escapes
+// unless its parent is an allowed index, an argument of a tracked parameter,
+// a whole-value assignment, or a struct literal key.
 func scanMapUses(ctx *goxlint.Context, tracked map[types.Object]*packageMap, paramKeys func(*goxlint.Context, *ast.CallExpr, int) ([]string, bool)) {
-	handled := map[*ast.Ident]bool{}
-	rangeKeys := map[types.Object][]string{}
-	ref := func(e ast.Expr) (*ast.Ident, *packageMap) {
-		var id *ast.Ident
-		switch x := ast.Unparen(e).(type) {
-		case *ast.Ident:
-			id = x
-		case *ast.SelectorExpr:
-			id = x.Sel
-		default:
-			return nil, nil
-		}
-		return id, tracked[ctx.TypesInfo.Uses[id]]
-	}
-	ast.Inspect(ctx.File, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.RangeStmt:
-			if v, ok := x.Value.(*ast.Ident); ok && rangesOverConstants(ctx, x) {
-				// SAFETY: rangesOverConstants checked that x.X is a composite literal.
-				keys, _ := constantStrings(ctx, ast.Unparen(x.X).(*ast.CompositeLit))
-				rangeKeys[ctx.TypesInfo.Defs[v]] = keys
-			}
-		case *ast.IndexExpr:
-			id, m := ref(x.X)
-			if m == nil {
-				return true
-			}
-			if key, ok := constantString(ctx, x.Index); ok {
-				m.add(key)
-				handled[id] = true
-			} else if k, ok := x.Index.(*ast.Ident); ok && rangeKeys[ctx.TypesInfo.Uses[k]] != nil {
-				m.add(rangeKeys[ctx.TypesInfo.Uses[k]]...)
-				handled[id] = true
-			}
-		case *ast.CallExpr:
-			for i, arg := range x.Args {
-				if id, m := ref(arg); m != nil {
-					if keys, ok := paramKeys(ctx, x, i); ok {
-						m.add(keys...)
-						handled[id] = true
-					}
-				}
-			}
-		case *ast.AssignStmt:
-			for _, lhs := range x.Lhs {
-				if id, m := ref(lhs); m != nil {
-					handled[id] = true
-				}
-			}
-		case *ast.KeyValueExpr:
-			if id, m := ref(x.Key); m != nil && m.field {
-				handled[id] = true
-			}
-		case *ast.Ident:
-			if m := tracked[ctx.TypesInfo.Uses[x]]; m != nil && !handled[x] {
+	rangeKeys := rangeConstantKeys(ctx)
+	for obj, m := range tracked {
+		for _, use := range ctx.UsesOf(obj) {
+			if !allowedMapUse(ctx, m, use, rangeKeys, paramKeys) {
 				m.escapes = true
 			}
 		}
+	}
+}
+
+// rangeConstantKeys maps a loop variable to the constant strings it takes,
+// when the loop does not modify that variable.
+func rangeConstantKeys(ctx *goxlint.Context) map[types.Object][]string {
+	keys := map[types.Object][]string{}
+	ast.Inspect(ctx.File, func(n ast.Node) bool {
+		r, ok := n.(*ast.RangeStmt)
+		if !ok {
+			return true
+		}
+		v, isIdent := r.Value.(*ast.Ident)
+		if isIdent && rangesOverConstants(ctx, r) {
+			// SAFETY: rangesOverConstants checked that r.X is a composite literal.
+			got, _ := constantStrings(ctx, ast.Unparen(r.X).(*ast.CompositeLit))
+			keys[ctx.TypesInfo.Defs[v]] = got
+		}
 		return true
 	})
+	return keys
+}
+
+// allowedMapUse reports whether use keeps m a fixed-key record, and records
+// any keys the use contributes.
+func allowedMapUse(ctx *goxlint.Context, m *packageMap, use goxlint.Use, rangeKeys map[types.Object][]string, paramKeys func(*goxlint.Context, *ast.CallExpr, int) ([]string, bool)) bool {
+	switch parent := use.Parent.(type) {
+	case *ast.IndexExpr:
+		if !sameExpr(parent.X, use.Expr) {
+			return false
+		}
+		if key, ok := constantString(ctx, parent.Index); ok {
+			m.add(key)
+			return true
+		}
+		k, ok := ast.Unparen(parent.Index).(*ast.Ident)
+		if ok && rangeKeys[ctx.TypesInfo.Uses[k]] != nil {
+			m.add(rangeKeys[ctx.TypesInfo.Uses[k]]...)
+			return true
+		}
+		return false
+	case *ast.CallExpr:
+		for i, arg := range parent.Args {
+			if !sameExpr(arg, use.Expr) {
+				continue
+			}
+			keys, ok := paramKeys(ctx, parent, i)
+			if !ok {
+				return false
+			}
+			m.add(keys...)
+			return true
+		}
+		return false
+	case *ast.AssignStmt:
+		for _, lhs := range parent.Lhs {
+			if sameExpr(lhs, use.Expr) {
+				return true
+			}
+		}
+		return false
+	case *ast.KeyValueExpr:
+		return m.field && sameExpr(parent.Key, use.Expr)
+	default:
+		return false
+	}
+}
+
+// sameExpr reports whether expr and ref are the same node once parentheses are removed.
+func sameExpr(expr, ref ast.Expr) bool {
+	return ast.Unparen(expr) == ref
 }
 
 // collectDynamicMaps adds each string-keyed map variable that is ranged over
@@ -707,7 +710,7 @@ func collectDynamicMaps(ctx *goxlint.Context, dynamic map[types.Object]bool) {
 		default:
 			return true
 		}
-		obj := mapObject(ctx, target)
+		obj := ctx.ObjectOfExpr(target)
 		if obj == nil || !isStringKeyMap(obj.Type()) {
 			return true
 		}
@@ -737,72 +740,61 @@ func rangesOverConstants(ctx *goxlint.Context, r *ast.RangeStmt) bool {
 
 // modifies reports whether body assigns to obj, increments it, or takes its address.
 func modifies(ctx *goxlint.Context, body ast.Node, obj types.Object) bool {
-	is := func(e ast.Expr) bool {
-		id, ok := ast.Unparen(e).(*ast.Ident)
-		return ok && obj != nil && ctx.TypesInfo.Uses[id] == obj
+	if body == nil || obj == nil {
+		return false
 	}
-	found := false
-	ast.Inspect(body, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.AssignStmt:
-			found = found || slices.ContainsFunc(x.Lhs, is)
-		case *ast.IncDecStmt:
-			found = found || is(x.X)
-		case *ast.UnaryExpr:
-			found = found || (x.Op == token.AND && is(x.X))
+	for _, use := range ctx.UsesOf(obj) {
+		if use.Ident.Pos() < body.Pos() || use.Ident.End() > body.End() {
+			continue
 		}
-		return !found
-	})
-	return found
+		switch parent := use.Parent.(type) {
+		case *ast.AssignStmt:
+			if slices.ContainsFunc(parent.Lhs, func(expr ast.Expr) bool { return sameExpr(expr, use.Expr) }) {
+				return true
+			}
+		case *ast.IncDecStmt:
+			if sameExpr(parent.X, use.Expr) {
+				return true
+			}
+		case *ast.UnaryExpr:
+			if parent.Op == token.AND && sameExpr(parent.X, use.Expr) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // calleeParams returns the tracked parameters of the function that call
-// invokes, aligned with call.Args. It resolves explicit instantiations such as
-// f[int](m), and puts a nil first for the receiver in a method expression such
-// as T.f(t, m).
+// invokes, aligned with call.Args. A method expression such as T.f(t, m)
+// takes the receiver as its first argument, so the result starts with nil.
 func calleeParams(ctx *goxlint.Context, call *ast.CallExpr, params map[*types.Func][]types.Object) []types.Object {
-	fun := ast.Unparen(call.Fun)
-	switch x := fun.(type) {
-	case *ast.IndexExpr:
-		fun = x.X
-	case *ast.IndexListExpr:
-		fun = x.X
-	}
-	var id *ast.Ident
-	receiver := false
-	switch x := ast.Unparen(fun).(type) {
-	case *ast.Ident:
-		id = x
-	case *ast.SelectorExpr:
-		id = x.Sel
-		sel := ctx.TypesInfo.Selections[x]
-		receiver = sel != nil && sel.Kind() == types.MethodExpr
-	default:
-		return nil
-	}
-	fn, _ := ctx.TypesInfo.Uses[id].(*types.Func)
+	fn := ctx.CalleeFunc(call)
 	if fn == nil {
 		return nil
 	}
 	objs := params[fn.Origin()]
-	if receiver {
+	if methodExprCall(ctx, call) {
 		return append([]types.Object{nil}, objs...)
 	}
 	return objs
 }
 
-// mapObject returns the variable or field that expr names, or nil.
-func mapObject(ctx *goxlint.Context, expr ast.Expr) types.Object {
-	switch x := ast.Unparen(expr).(type) {
-	case *ast.Ident:
-		if obj := ctx.TypesInfo.Uses[x]; obj != nil {
-			return obj
-		}
-		return ctx.TypesInfo.Defs[x]
-	case *ast.SelectorExpr:
-		return ctx.TypesInfo.Uses[x.Sel]
+// methodExprCall reports whether call invokes a method expression (T.M or (*T).M).
+func methodExprCall(ctx *goxlint.Context, call *ast.CallExpr) bool {
+	fun := ast.Unparen(call.Fun)
+	switch x := fun.(type) {
+	case *ast.IndexExpr:
+		fun = ast.Unparen(x.X)
+	case *ast.IndexListExpr:
+		fun = ast.Unparen(x.X)
 	}
-	return nil
+	sel, ok := ast.Unparen(fun).(*ast.SelectorExpr)
+	if !ok || ctx.TypesInfo == nil {
+		return false
+	}
+	selection := ctx.TypesInfo.Selections[sel]
+	return selection != nil && selection.Kind() == types.MethodExpr
 }
 
 // constantStrings returns the elements of a literal whose elements are all constant strings.

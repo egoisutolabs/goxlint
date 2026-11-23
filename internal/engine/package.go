@@ -16,6 +16,11 @@ import (
 // LintAll runs file visitors in parallel, then package analyzers, then applies
 // suppressions once to the combined findings. Results retain the input order.
 func LintAll(files []File, rulesFor func(filename string) []ConfiguredRule, opts LintOptions) [][]Diagnostic {
+	for i := range files {
+		// One index for the file phase and the package phase. It stays unbuilt
+		// until a rule calls UsesOf.
+		files[i].uses = newUseIndex(files[i].AST, files[i].Info)
+	}
 	out := make([][]Diagnostic, len(files))
 	rules := make([][]ConfiguredRule, len(files))
 	fileOpts := make([]LintOptions, len(files))
@@ -143,7 +148,7 @@ func lintPackage(files []File, group []int, rules [][]ConfiguredRule, out [][]Di
 					pending[j] = append(pending[j], resolve(f, f.Fset.File(f.AST.FileStart), &configured, d, packageFiles))
 				}
 			}
-			ctx := goxlint.NewContext(cr.Rule, id, f.Fset, f.AST, f.Filename, f.Source, pkg, info, configured.Options, &stack, report)
+			ctx := goxlint.NewContext(cr.Rule, id, f.Fset, f.AST, f.Filename, f.Source, pkg, info, configured.Options, &stack, report, f.uses.lookup)
 			ctx.Enabled = configured.Severity != Off
 			contexts[j] = ctx
 		}
