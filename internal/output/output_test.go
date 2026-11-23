@@ -180,6 +180,39 @@ func TestSARIFOutsideRootURI(t *testing.T) {
 	}
 }
 
+func TestSARIFFromSubdirectory(t *testing.T) {
+	repo := t.TempDir()
+	name := filepath.Join(repo, "service", "handler.go")
+	outside := filepath.Join(filepath.Dir(repo), "outside", "a.go")
+	var out bytes.Buffer
+	printer := Printer{W: &out, Format: "sarif", Root: repo}
+	diags := []engine.Diagnostic{
+		{RuleID: "test/rule", Severity: engine.Warn, Filename: name, Message: "inside", Start: token.Position{Line: 1}, End: token.Position{Line: 1}},
+		{RuleID: "test/rule", Severity: engine.Warn, Filename: outside, Message: "outside", Start: token.Position{Line: 1}, End: token.Position{Line: 1}},
+	}
+	if err := printer.Print(diags); err != nil {
+		t.Fatal(err)
+	}
+	var log sarifLog
+	if err := json.Unmarshal(out.Bytes(), &log); err != nil {
+		t.Fatal(err)
+	}
+	results := log.Runs[0].Results
+	if len(results) != 2 {
+		t.Fatalf("results: %s", &out)
+	}
+	got := results[0].Locations[0].PhysicalLocation.ArtifactLocation.URI
+	want := filepath.ToSlash(filepath.Join("service", "handler.go"))
+	if got != want {
+		t.Fatalf("URI = %q, want %q", got, want)
+	}
+	outsideURI := results[1].Locations[0].PhysicalLocation.ArtifactLocation.URI
+	suffix := "/" + filepath.ToSlash(filepath.Join("outside", "a.go"))
+	if !strings.HasPrefix(outsideURI, "file:///") || !strings.HasSuffix(outsideURI, suffix) {
+		t.Fatalf("outside URI = %q, want an absolute file: URI ending %s", outsideURI, suffix)
+	}
+}
+
 func TestSARIFUnicodeColumns(t *testing.T) {
 	source := []byte("package p\r\n\t/* 😀é */ bad\r\n")
 	for _, tc := range []struct{ line, column, want int }{

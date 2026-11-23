@@ -201,8 +201,8 @@ valid. Without `--timing`, goxlint does not collect rule times.
 
 Diagnostic file paths use forward slashes (`/`) on every operating system,
 including Windows. Paths within the working directory are relative to it.
-Other paths stay absolute, except in SARIF output. A directory named
-`..foo` inside the working directory also uses a relative path.
+Other paths stay absolute. For SARIF paths, read [sarif](#sarif). A directory
+named `..foo` inside the working directory also uses a relative path.
 
 ### default
 
@@ -320,10 +320,14 @@ entry has a file URI, a source range, and a unique ID within that result. Its
 `message.text` holds the related message when one is set. The array is absent
 when there are no related locations.
 
-SARIF file URIs are relative for files inside the working directory. A
-directory named `..foo` is inside the working directory. Files outside the
-working directory use an absolute `file:` URI on every operating system. URIs
-use `/` and escape special characters, for example a space becomes `%20`.
+SARIF file URIs are relative to the repository root. The repository root is
+the nearest parent directory that contains `.git`. `.git` can be a directory
+or a file. Git worktrees and submodules use a `.git` file. When goxlint finds
+no `.git`, URIs are relative to the working directory.
+
+A directory named `..foo` uses a relative URI when it is inside the root.
+Files outside the root use an absolute `file:` URI on every operating system.
+URIs use `/` and escape special characters. For example, a space becomes `%20`.
 
 Line and column numbers start at 1. The end position is exclusive. SARIF
 columns count Unicode code points. Other formats count bytes. Tabs count as
@@ -395,7 +399,11 @@ still fails in that case. Add `--deny-warnings` to make warnings fail the job.
 The repository must have code scanning available. For access requirements,
 read [Uploading a SARIF file to GitHub](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/integrate-with-existing-tools/upload-sarif-file).
 
-Run goxlint from the root directory of the repository when you upload SARIF
-to GitHub. GitHub reads the paths relative to the repository root. If you run
-goxlint in a subdirectory, for example with `working-directory: ./service`,
-the results refer to the wrong files.
+GitHub code scanning reads SARIF paths from the repository root. goxlint
+writes those paths when `.git` is in the working directory or in a parent
+directory. You can run goxlint in a subdirectory. A diagnostic for
+`handler.go` with `working-directory: ./service` uses the URI
+`service/handler.go`.
+
+**CAUTION:** When goxlint finds no `.git`, paths stay relative to the working
+directory. Run goxlint from the repository root in that case.
