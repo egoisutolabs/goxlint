@@ -96,6 +96,7 @@ handlers:
 | --- | --- |
 | `goxlint.On(func(n *ast.T) {...})` | Before the children of each node of type `*ast.T`. |
 | `goxlint.OnExit(func(n *ast.T) {...})` | After the children of each node of type `*ast.T`. |
+| `goxlint.OnMatch(p, fn)` | Before the children of each node that matches pattern `p`. Read [Patterns](#patterns). |
 
 The type parameter selects the node type. You can register more than one
 handler for the same type.
@@ -184,6 +185,7 @@ the same data.
 | `CalleeFunc(call)` | The function or method that the call refers to, or `nil`. An explicit instantiation and a method expression are included. |
 | `IsPkgFunc(call, path, names...)` | `true` if the call is a call to one of the package-level functions `path.name`. |
 | `UsesOf(obj)` | The uses of the object in this file, in source order. `nil` when the rule does not set `NeedsTypes`. |
+| `ReplaceMatch(m, template)` | An edit that replaces the match with `template`. Read [Patterns](#patterns). |
 
 `Parent` and `Ancestors` are correct only while a handler runs. Do not keep
 their results for later use.
@@ -406,6 +408,158 @@ func indexed(ctx *goxlint.Context, obj types.Object) bool {
 For the uses in every file of a package, read
 [Uses in a package](package-rules.md#uses-in-a-package).
 
+## Patterns
+
+A pattern is a Go expression or a list of statements with variables. Use a
+pattern to find code by example. `OnMatch` runs in the same walk as `On`.
+goxlint calls the matcher only for the node type of the pattern root.
+
+### Compile a pattern
+
+`goxlint.MustPattern` compiles a pattern. It panics when the pattern is not
+valid. Use it for a package-level variable.
+
+`goxlint.CompilePattern` compiles a pattern and returns an error. The error
+contains the position in the pattern. The form is `pattern:line:column`.
+
+1. Write the pattern as a Go expression, or as statements when the text is not an expression.
+2. Call `CompilePattern` or `MustPattern`.
+3. Keep the `*goxlint.Pattern` value. It does not change after compilation. Several files can use it at the same time.
+
+### Pattern syntax
+
+| Syntax | Match |
+| --- | --- |
+| Go code | The same syntax tree. goxlint ignores positions, comments, and parentheses that do not change the meaning. |
+| `$x` | Any one node. When `$x` occurs again, the nodes must be equal. |
+| `$_` | Any one node. The pattern does not record it. |
+| `$*xs` | Zero or more nodes in a list. The list can be call arguments, statements, or composite literal elements. |
+| `$*_` | The same list as `$*xs`. The pattern does not record the nodes. |
+
+A statement list can use `$*` inside a block, a case body, or a select body.
+`$name` and `$*name` cannot be the same name in one pattern.
+
+**CAUTION:** `...` is part of the match. `f($*args)` does not match `f(xs...)`.
+A pattern with two or more statements matches a whole block. Use `$*_` for the
+statements that you do not want to name.
+
+These patterns are valid:
+
+- `fmt.Println($*args)`
+- `$x == nil || len($x) == 0`
+- `if $err != nil { return $err }`
+- `errors.New(fmt.Sprintf($*args))`
+
+`f(1)` is an expression. It matches every call, including a call inside a larger expression. `if $err != nil { return $err }` is a statement. It matches that statement inside a block.
+
+**CAUTION:** A pattern that is only `$x` or `$_` matches every node. goxlint registers every concrete node type in the same walk. Use a concrete pattern when you can.
+
+### Recorded nodes
+
+`goxlint.Match` has two fields.
+
+| Field | Description |
+| --- | --- |
+| `Node` | The matched node. |
+| `Captures` | The recorded nodes. The key is the name without `$`. |
+
+`$x` records one node. `$*xs` records zero or more nodes. The key is present when the list is empty. `$_` and `$*_` are not keys.
+
+### Package names
+
+A selector such as `fmt.Println` has two meanings.
+
+- The rule sets `NeedsTypes`. The selector matches by import path. The name in the pattern is the path, or the last element of the path. `import f "fmt"` then `f.Println(x)` matches. `json.Marshal` matches `encoding/json`. A renamed import matches too. A call on a local value named `json` does not match.
+- The rule does not set `NeedsTypes`. The selector matches the written name. A renamed import does not match. A local value with that name does match.
+
+A dot import does not match. The call has no package selector.
+
+Call `OnMatch` from `Create`. That is where the rule receives type information for the file.
+
+### Exceptions
+
+An exception is a pattern that removes a match. `Except` returns a new pattern. The original pattern does not change. A node matches when it matches the pattern and it matches no exception.
+
+1. A `$name` that the main pattern records refers to that capture.
+2. A `$name` that the main pattern does not record is local to the exception.
+3. goxlint tests the exception against the same node as the main pattern.
+4. With `NeedsTypes`, an exception uses import paths in the same way as the main pattern.
+
+`Except` panics when an exception is not valid. The panic value is the error from `CompilePattern`. `CompileExcept` returns that error. The error contains the position in the exception.
+
+```go
+var println = goxlint.MustPattern(`fmt.Println($*args)`).
+	Except(`fmt.Println()`, `fmt.Println($x)`)
+```
+
+This pattern matches `fmt.Println` with two or more arguments. `fmt.Println()` and `fmt.Println(x)` are the exceptions. `$x` is local to the second exception.
+
+This pattern reports `a == b` and does not report `a == a`:
+
+```go
+var different = goxlint.MustPattern(`$x == $y`).Except(`$x == $x`)
+```
+
+Here `$x` in the exception is the left operand from the main pattern.
+
+### Replace a match
+
+`ctx.ReplaceMatch` returns an edit. The edit replaces the matched node with the template.
+goxlint replaces each `$name` or `$*name` in the template with the source text of the capture.
+The text of a list runs from the first node through the last node.
+It includes the commas and the spaces between the nodes.
+An empty list inserts no text.
+A `$` that does not start a name is copied.
+`$$` writes one `$`.
+
+`ReplaceMatch` panics when the template uses a name that the match did not record.
+
+### A rule with no syntax-tree code
+
+This rule uses one pattern and two exceptions. It does not inspect the syntax tree in Go code.
+
+```go
+package rules
+
+import "github.com/egoisutolabs/goxlint"
+
+// println matches fmt.Println with two or more arguments.
+var println = goxlint.MustPattern(`fmt.Println($*args)`).
+	Except(`fmt.Println()`, `fmt.Println($x)`)
+
+// NoVerbosePrintln rejects a long fmt.Println call.
+var NoVerbosePrintln = &goxlint.Rule{
+	Meta: goxlint.Meta{
+		Name:        "no-verbose-println",
+		Description: "Disallow fmt.Println with several arguments.",
+		Category:    goxlint.Style,
+		NeedsTypes:  true,
+		Fixable:     goxlint.FixSuggestion,
+		Messages: map[string]string{
+			"println": "`fmt.Println` has several arguments.",
+		},
+	},
+	Create: func(ctx *goxlint.Context) goxlint.Visitor {
+		return goxlint.Visit(
+			goxlint.OnMatch(println, func(m goxlint.Match) {
+				ctx.Report(goxlint.Diagnostic{
+					Node:      m.Node,
+					MessageID: "println",
+					Help:      "Log one value, or build the line with fmt.Printf.",
+					Fix: &goxlint.Fix{
+						Kind:    goxlint.FixSuggestion,
+						Message: "Use log.Println.",
+						Edits:   []goxlint.Edit{ctx.ReplaceMatch(m, "log.Println($*args)")},
+					},
+				})
+			}),
+		)
+	},
+}
+```
+
+You can still use Go after the match. The pattern finds the candidate. The Go code decides. The example rule `anti-slop/no-sleep-in-tests` does this. The pattern finds `time.Sleep`. The Go code allows a call inside a `testing/synctest` bubble.
+
 ## Test files
 
 goxlint lints `_test.go` files with the same rules as other files. Many rules
@@ -448,3 +602,4 @@ rules. These rules show:
 - Comment analysis with `CommentsBefore` and `TrailingComment`.
 - Suggestion fixes.
 - A package rule with type information.
+- A pattern for `time.Sleep`, with Go code for the decision the pattern does not make.

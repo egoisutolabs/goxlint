@@ -94,7 +94,9 @@ tested rule. Install one skill with `--skill goxlint-setup` or
 handlers for the node types they care about, and the engine walks each file
 once and dispatches by type. Handlers run only for the node types they asked
 for, and a file with no handlers is not walked at all. Adding a rule adds
-handlers, not traversals.
+handlers, not traversals. A pattern handler is one of those handlers:
+`OnMatch` registers the pattern's root node type, and the matcher runs in
+that same walk.
 
 **Fixes you can run without reading every diff.** Each fix declares how safe it
 is: `safe`, `suggestion`, or `dangerous`, and each level has its own flag.

@@ -52,6 +52,7 @@ A `goxlint.Edit` replaces the text between `Pos` and `End` with `NewText`.
 | Helper | Edit |
 | --- | --- |
 | `goxlint.ReplaceNode(node, text)` | Replaces the node with `text`. |
+| `ctx.ReplaceMatch(m, template)` | Replaces the matched node. goxlint puts the source text of each capture in the template. Read [Patterns](writing-rules.md#patterns). |
 | `goxlint.InsertBefore(pos, text)` | Inserts `text` at `pos`. |
 | `goxlint.Edit{Pos: p, End: e, NewText: ""}` | Removes the text between `p` and `e`. |
 

@@ -96,8 +96,26 @@ func TestX(t *testing.T) {
 		time.Sleep(time.Second)
 	})
 }`},
+			{Name: "local time value", Filename: "x_test.go", Code: `
+import "testing"
+
+type clock struct{}
+
+func (clock) Sleep(n int) {}
+
+func TestX(t *testing.T) {
+	var time clock
+	time.Sleep(1)
+}`},
 		},
 		Invalid: []goxlinttest.Case{
+			{Name: "renamed import", Filename: "x_test.go", Code: `
+import (
+	"testing"
+	tme "time"
+)
+
+func TestX(t *testing.T) { tme.Sleep(tme.Second) }`, Errors: []goxlinttest.Error{{MessageID: "sleep"}}},
 			{Name: "sleep in test", Filename: "x_test.go", Code: `
 import (
 	"testing"

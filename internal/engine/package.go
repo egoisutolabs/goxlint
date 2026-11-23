@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/egoisutolabs/goxlint"
+	"github.com/egoisutolabs/goxlint/internal/pattern"
 )
 
 // LintAll runs file visitors in parallel, then package analyzers, then applies
@@ -152,6 +153,8 @@ func lintPackage(files []File, group []int, rules [][]ConfiguredRule, out [][]Di
 			ctx.Enabled = configured.Severity != Off
 			contexts[j] = ctx
 		}
+		// Package analysis does not build visitors. Drop the Create binding.
+		pattern.UnbindCreate()
 		ctx := &goxlint.PackageContext{Name: files[group[0]].AST.Name.Name, Files: contexts}
 		var start time.Time
 		if timings != nil {

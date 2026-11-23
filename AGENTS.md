@@ -29,7 +29,7 @@ Run one package: `go test ./internal/engine -run TestName`.
 
 | Path | Contents |
 | --- | --- |
-| `rule.go`, `context.go` | Package `goxlint`: the public rule API. |
+| `rule.go`, `context.go`, `pattern.go` | Package `goxlint`: the public rule API. |
 | `goxlinttest/` | Package `goxlinttest`: the public rule test harness. |
 | `cli/` | Package `cli`: the public command-line runner. |
 | `internal/engine/` | Loading, the AST walk, package rules, suppressions, fixes. |

@@ -115,6 +115,9 @@ the handlers of all rules.
 - goxlint visits only the node types that the rules registered. An interface
   handler, such as `ast.Stmt`, runs only for the node types that implement
   the interface.
+- A pattern handler is a handler for the root node type of the pattern.
+  goxlint calls it in this same walk. An interface root, such as `$x`, runs
+  for the concrete node types that implement that interface.
 - When a rule calls `UsesOf`, goxlint walks that file again and records each
   use. It records the uses one time for the file and shares them with the
   other rules.

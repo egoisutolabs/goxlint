@@ -14,6 +14,7 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 
 	"github.com/egoisutolabs/goxlint"
+	"github.com/egoisutolabs/goxlint/internal/pattern"
 )
 
 // Severity is how a configured rule's diagnostics are treated.
@@ -268,6 +269,8 @@ type ifaceHandler struct {
 }
 
 func create(cr *ConfiguredRule, ctx *goxlint.Context) (v goxlint.Visitor, err error) {
+	// Create calls OnMatch, which reads the type info bound by NewContext.
+	defer pattern.UnbindCreate()
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic in Create: %v", r)
