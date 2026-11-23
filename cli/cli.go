@@ -372,16 +372,11 @@ func lint(args []string, stdin io.Reader, stdout, stderr io.Writer, reg *config.
 		diagnosticOut = stderr
 	}
 	p := &output.Printer{W: diagnosticOut, Format: *format, Color: colorEnabled(diagnosticOut), Root: cwd, Sources: sources}
+	// AllRules omits rules that only an override enables, and it still counts a
+	// rule that overrides disable for every file in the run.
+	rulesRun := enabledRules(files, selected, rulesFor)
 	if *format == "sarif" {
-		p.Rules = map[string]goxlint.Meta{}
-		for _, f := range files {
-			if !selected(f.Filename) {
-				continue
-			}
-			for _, cr := range rulesFor(f.Filename) {
-				p.Rules[cr.ID] = cr.Rule.Meta
-			}
-		}
+		p.Rules = maps.Clone(rulesRun)
 		// Supporting-file failures can name rules disabled for the stdin file.
 		for _, d := range diags {
 			if rule := reg.Rules[d.RuleID]; rule != nil {
@@ -398,7 +393,7 @@ func lint(args []string, stdin io.Reader, stdout, stderr io.Writer, reg *config.
 		return 0, err
 	}
 	if *format == "" || *format == "default" {
-		ruleCount := len(resolved.AllRules())
+		ruleCount := len(rulesRun)
 		fmt.Fprintf(diagnosticOut, "\nFound %d warning%s and %d error%s.\nFinished in %s on %d file%s with %d rule%s using %d threads (%s mode).\n",
 			warnings, plural(warnings), errs, plural(errs), time.Since(start).Round(time.Millisecond),
 			fileCount, plural(fileCount), ruleCount, plural(ruleCount), runtime.GOMAXPROCS(0), mode(typed))
@@ -690,6 +685,20 @@ func plural(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// enabledRules returns the rules enabled for at least one selected file.
+func enabledRules(files []engine.File, selected func(string) bool, rulesFor func(string) []engine.ConfiguredRule) map[string]goxlint.Meta {
+	out := map[string]goxlint.Meta{}
+	for _, f := range files {
+		if !selected(f.Filename) {
+			continue
+		}
+		for _, cr := range rulesFor(f.Filename) {
+			out[cr.ID] = cr.Rule.Meta
+		}
+	}
+	return out
 }
 
 func must[T any](v T, err error) T {
