@@ -134,6 +134,11 @@ These conditions apply to the `Code` field:
 - `goxlinttest` type-checks all cases. The code must compile. Unused variables and
   unused imports are permitted.
 - The code can import packages from the standard library.
+- goxlinttest reads an imported package from export data.
+- The export data comes from the local Go toolchain.
+- goxlinttest does not use the network.
+- goxlinttest does not download a private module.
+- The Go build cache makes the next test run fast.
 - Each case is one file.
 
 `goxlinttest` always type-checks the code. The rule gets the type information
@@ -257,9 +262,10 @@ both rule phases. The harness does not report unused suppressions. An internal
 rule error fails the test and shows the error message, even if it matches an
 expected error.
 
-`RunPackage` does not check fix output. It does not load packages from disk or
-apply build tags. It does not create Go test variants. Put a `_test.go` file in
-`Files` to test filename-based rule behavior.
+`RunPackage` does not check fix output. It does not read case files from disk or
+apply build tags to them. It does not create Go test variants. Put a `_test.go`
+file in `Files` to test filename-based rule behavior. `RunPackage` reads imported
+packages in the same way as `Run`.
 
 ## Recommendations
 

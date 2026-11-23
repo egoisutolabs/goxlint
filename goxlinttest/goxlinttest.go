@@ -18,6 +18,9 @@
 // Code without a package clause is wrapped in "package p". Line numbers in
 // Errors are relative to Code as written. Every case is type-checked, so code
 // must compile, apart from unused variables and imports.
+// Imported packages come from export data of the local toolchain, so a test
+// does not use the network and does not download a private module. The Go
+// build cache makes the next run fast.
 // Use RunPackage to test several source files together as one package.
 package goxlinttest
 
@@ -25,7 +28,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
-	"go/importer"
 	"go/parser"
 	"go/token"
 	"go/types"
@@ -196,7 +198,10 @@ func (r result) line(d engine.Diagnostic) int {
 var (
 	mu   sync.Mutex
 	fset = token.NewFileSet()
-	imp  types.Importer
+	// importGen and importCache are guarded by mu.
+	// One generation is one packages.Load. Type identity holds only inside it.
+	importGen   int
+	importCache = map[string]cachedImport{}
 )
 
 func lint(t *testing.T, rule *goxlint.Rule, c Case) result {
@@ -300,11 +305,13 @@ func encodeOptions(t *testing.T, options any) json.RawMessage {
 	return b
 }
 
-// typeCheck shares the source importer with single-file cases. Caller holds mu.
+// typeCheck type-checks the fixture source. Imported packages come from
+// export data and are reused when one load produced all of them. Caller holds mu.
 func typeCheck(t *testing.T, files []engine.File) {
 	t.Helper()
-	if imp == nil {
-		imp = importer.ForCompiler(fset, "source", nil)
+	imp, err := importerFor(importPaths(files))
+	if err != nil {
+		t.Fatalf("loading imports: %v", err)
 	}
 	var syntax []*ast.File
 	for _, file := range files {
