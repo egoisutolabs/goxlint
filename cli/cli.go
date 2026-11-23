@@ -56,7 +56,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, plugins ...go
 		case "rules":
 			return listRulesCommand(args[1:], stdout, stderr, reg)
 		case "init":
-			return initConfig(stdout, stderr, reg)
+			return initConfig(args[1:], stdout, stderr, reg)
 		}
 	}
 	code, err := lint(args, stdin, stdout, stderr, reg)
@@ -90,6 +90,7 @@ func lint(args []string, stdin io.Reader, stdout, stderr io.Writer, reg *config.
 	fs := flag.NewFlagSet("goxlint", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (
+		chdir         = fs.String("C", "", "change to `dir` before loading config and packages; -c selects the config file")
 		configPath    = fs.String("c", "", "path to config file (default: nearest "+config.FileName+")")
 		stdinFilename = fs.String("stdin-filename", "", "read stdin as this Go file; with fixes, write source to stdout")
 		format        = fs.String("format", "default", "output format: "+strings.Join(output.Formats, ", "))
@@ -140,7 +141,9 @@ func lint(args []string, stdin io.Reader, stdout, stderr io.Writer, reg *config.
 		return 0, fmt.Errorf("--stdin-filename needs a filename and cannot be used with patterns")
 	}
 
-	cwd, err := os.Getwd()
+	// -C is applied before config discovery. Patterns and output paths are
+	// relative to that directory, as with go -C.
+	cwd, err := workingDir(fs, *chdir)
 	if err != nil {
 		return 0, err
 	}
@@ -183,7 +186,7 @@ func lint(args []string, stdin io.Reader, stdout, stderr io.Writer, reg *config.
 	var stdinPath string
 	stdinIgnored := false
 	if stdinSet {
-		stdinPath, err = filepath.Abs(*stdinFilename)
+		stdinPath, err = resolvePath(cwd, *stdinFilename)
 		if err != nil {
 			return 0, err
 		}
@@ -501,9 +504,10 @@ func listRulesCommand(args []string, stdout, stderr io.Writer, reg *config.Regis
 	fs := flag.NewFlagSet("goxlint rules", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	format := fs.String("format", "table", "output format: table or json")
+	chdir := fs.String("C", "", "change to `dir` before reading the config file; -c selects the config file")
 	configPath := fs.String("c", "", "config file for resolved rule severity in JSON output")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: goxlint rules [--format table|json] [-c path]")
+		fmt.Fprintln(stderr, "usage: goxlint rules [--format table|json] [-C dir] [-c path]")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -531,9 +535,16 @@ func listRulesCommand(args []string, stdout, stderr io.Writer, reg *config.Regis
 			fmt.Fprintln(stderr, "goxlint rules: -c is only supported with --format json")
 			return 2
 		}
+	}
+	dir, err := workingDir(fs, *chdir)
+	if err != nil {
+		fmt.Fprintln(stderr, "goxlint:", err)
+		return 2
+	}
+	if *format == "table" {
 		return listRules(stdout, reg)
 	}
-	resolved, err := resolveRulesConfig(*configPath, reg)
+	resolved, err := resolveRulesConfig(*configPath, dir, reg)
 	if err != nil {
 		fmt.Fprintln(stderr, "goxlint:", err)
 		return 2
@@ -541,22 +552,69 @@ func listRulesCommand(args []string, stdout, stderr io.Writer, reg *config.Regis
 	return listRulesJSON(stdout, stderr, reg, resolved)
 }
 
-func resolveRulesConfig(configPath string, reg *config.Registry) (*config.Resolved, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-	cfg, root, err := loadConfig(configPath, cwd)
+func resolveRulesConfig(configPath, dir string, reg *config.Registry) (*config.Resolved, error) {
+	cfg, root, err := loadConfig(configPath, dir)
 	if err != nil {
 		return nil, err
 	}
 	return config.Resolve(cfg, reg, root)
 }
 
-func loadConfig(configPath, cwd string) (*config.Config, string, error) {
-	cfg, root := config.Default(), cwd
+// workingDir is the directory for this run. -C is resolved before config
+// discovery so a relative config path starts in that directory.
+func workingDir(fs *flag.FlagSet, chdir string) (string, error) {
+	set := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "C" {
+			set = true
+		}
+	})
+	if !set {
+		return os.Getwd()
+	}
+	if chdir == "" {
+		return "", errors.New("-C: directory is empty")
+	}
+	dir, err := filepath.Abs(chdir)
+	if err != nil {
+		return "", fmt.Errorf("-C: %w", err)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		return "", fmt.Errorf("-C: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("-C: %s is not a directory", chdir)
+	}
+	return dir, nil
+}
+
+// resolvePath makes a relative path absolute from dir. Absolute paths stay
+// absolute, so -c and --stdin-filename can name a file outside that directory.
+func resolvePath(dir, path string) (string, error) {
+	if !filepath.IsAbs(path) {
+		if !filepath.IsAbs(dir) {
+			var err error
+			dir, err = filepath.Abs(dir)
+			if err != nil {
+				return "", err
+			}
+		}
+		path = filepath.Join(dir, path)
+	}
+	return filepath.Abs(path)
+}
+
+func loadConfig(configPath, dir string) (*config.Config, string, error) {
+	cfg, root := config.Default(), dir
 	if configPath == "" {
-		configPath = config.Find(cwd)
+		configPath = config.Find(dir)
+	} else {
+		resolved, err := resolvePath(dir, configPath)
+		if err != nil {
+			return nil, "", err
+		}
+		configPath = resolved
 	}
 	if configPath != "" {
 		var err error
@@ -628,8 +686,31 @@ func ruleScope(rule *goxlint.Rule) string {
 	return "file"
 }
 
-func initConfig(stdout, stderr io.Writer, reg *config.Registry) int {
-	if _, err := os.Stat(config.FileName); err == nil {
+func initConfig(args []string, stdout, stderr io.Writer, reg *config.Registry) int {
+	fs := flag.NewFlagSet("goxlint init", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	chdir := fs.String("C", "", "change to `dir` before writing the config file")
+	fs.Usage = func() {
+		fmt.Fprintln(stderr, "usage: goxlint init [-C dir]")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(stderr, "goxlint init: unexpected argument %q\n", fs.Arg(0))
+		return 2
+	}
+	dir, err := workingDir(fs, *chdir)
+	if err != nil {
+		fmt.Fprintln(stderr, "goxlint:", err)
+		return 2
+	}
+	path := filepath.Join(dir, config.FileName)
+	if _, err := os.Stat(path); err == nil {
 		fmt.Fprintf(stderr, "goxlint: %s already exists\n", config.FileName)
 		return 2
 	}
@@ -643,7 +724,7 @@ func initConfig(stdout, stderr io.Writer, reg *config.Registry) int {
 		fmt.Fprintln(stderr, "goxlint:", err)
 		return 2
 	}
-	if err := os.WriteFile(config.FileName, append(b, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(path, append(b, '\n'), 0o644); err != nil {
 		fmt.Fprintln(stderr, "goxlint:", err)
 		return 2
 	}

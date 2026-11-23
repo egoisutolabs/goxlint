@@ -18,7 +18,9 @@ This procedure makes a linter with one rule. The rule finds calls to
    ```
 
 You can also keep the linter in a separate module. goxlint does not need to be in
-the same module as the code that it examines.
+the same module as the code that it examines. From that module, use `-C` to
+lint the repository root. Read
+[Run from another directory](cli.md#run-from-another-directory).
 
 ## 2. Write a rule
 

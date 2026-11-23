@@ -16,8 +16,9 @@ performance, load errors, and the order of results.
 
 ## 1. Configuration
 
-goxlint finds `.goxlintrc.json` and decodes it. Then it applies the `-D`, `-W`, and
-`-A` flags. Then it validates all rule IDs and categories against the
+If you set `-C`, goxlint selects that directory first. goxlint finds
+`.goxlintrc.json` from that directory and decodes it. Then it applies the `-D`,
+`-W`, and `-A` flags. Then it validates all rule IDs and categories against the
 registered plugins. An error stops the run with exit code `2`. goxlint does not
 load or change files before this step is complete.
 
@@ -50,6 +51,8 @@ goxlint uses `golang.org/x/tools/go/packages`. It has the same behavior as
 `go build` and `go vet`:
 
 - The Go tool expands the patterns. `./...` does not go into nested modules.
+  From a linter module inside the repository, use `-C` with the repository
+  root. Read [Run from another directory](cli.md#run-from-another-directory).
 - goxlint loads test files too.
 - Build constraints apply. Files that need a build tag are not loaded. Give
   the tags with `--tags`.
