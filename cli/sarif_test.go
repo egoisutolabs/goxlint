@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -146,4 +148,128 @@ func TestSARIFDiagnostics(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRepoRoot(t *testing.T) {
+	repo := t.TempDir()
+	deep := filepath.Join(repo, "service", "pkg")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := repoRoot(deep); got != repo {
+		t.Fatalf("directory marker: repoRoot(%q) = %q, want %q", deep, got, repo)
+	}
+	if got := repoRoot(repo); got != repo {
+		t.Fatalf("repoRoot(root) = %q, want %q", got, repo)
+	}
+
+	worktree := filepath.Join(repo, "service")
+	if err := os.WriteFile(filepath.Join(worktree, ".git"), []byte("gitdir: /var/empty/main.git/worktrees/service\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := repoRoot(deep); got != worktree {
+		t.Fatalf(".git file: repoRoot(%q) = %q, want %q", deep, got, worktree)
+	}
+
+	plain := filepath.Join(t.TempDir(), "lonely")
+	if err := os.MkdirAll(plain, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := repoRoot(plain); got != "" {
+		t.Fatalf("repoRoot(%q) = %q, want no repository", plain, got)
+	}
+}
+
+func TestNonSARIFPathsStayInWorkingDirectory(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	service := filepath.Join(repo, "service")
+	if err := os.Mkdir(service, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(service)
+	writeTestFile(t, ".goxlintrc.json", `{"rules":{"test/rename":"warn"},"reportUnusedSuppressions":"off"}`)
+	writeTestFile(t, "a.go", "package p\nvar bad = 1\n")
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--format=json", "."}, &stdout, &stderr, testPlugin(false)); code != 0 || stderr.Len() != 0 {
+		t.Fatalf("exit %d: %s; %s", code, &stdout, &stderr)
+	}
+	var diags []struct{ File string }
+	if err := json.Unmarshal(stdout.Bytes(), &diags); err != nil {
+		t.Fatal(err)
+	}
+	if len(diags) != 1 || diags[0].File != "a.go" {
+		t.Fatalf("json path = %+v, want a.go; output %s", diags, &stdout)
+	}
+}
+
+func TestSARIFRootFollowsChdir(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	service := filepath.Join(repo, "service")
+	if err := os.Mkdir(service, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".goxlintrc.json"), []byte(`{"rules":{"test/rename":"warn"},"reportUnusedSuppressions":"off"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(service, "a.go"), []byte("package p\nvar bad = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.ToSlash(filepath.Join("service", "a.go"))
+	check := func(t *testing.T, dir string, args ...string) {
+		t.Helper()
+		t.Chdir(dir)
+		var stdout, stderr bytes.Buffer
+		if code := Run(append([]string{"--format=sarif"}, args...), &stdout, &stderr, testPlugin(false)); code != 0 || stderr.Len() != 0 {
+			t.Fatalf("exit %d: %s; %s", code, &stdout, &stderr)
+		}
+		var log struct {
+			Runs []struct {
+				Results []struct {
+					Locations []struct {
+						PhysicalLocation struct {
+							ArtifactLocation struct{ URI string }
+						}
+					}
+				}
+			}
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &log); err != nil {
+			t.Fatal(err)
+		}
+		if len(log.Runs) != 1 || len(log.Runs[0].Results) != 1 || len(log.Runs[0].Results[0].Locations) != 1 {
+			t.Fatalf("unexpected SARIF: %s", &stdout)
+		}
+		if got := log.Runs[0].Results[0].Locations[0].PhysicalLocation.ArtifactLocation.URI; got != want {
+			t.Fatalf("URI %q, want %q", got, want)
+		}
+	}
+	t.Run("from-repository-root", func(t *testing.T) {
+		check(t, repo, "-C", "service", ".")
+	})
+	t.Run("from-outside", func(t *testing.T) {
+		check(t, t.TempDir(), "-C", service, ".")
+	})
+	t.Run("json-stays-in-selected-directory", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		var stdout, stderr bytes.Buffer
+		if code := Run([]string{"-C", service, "--format=json", "."}, &stdout, &stderr, testPlugin(false)); code != 0 || stderr.Len() != 0 {
+			t.Fatalf("exit %d: %s; %s", code, &stdout, &stderr)
+		}
+		var diags []struct{ File string }
+		if err := json.Unmarshal(stdout.Bytes(), &diags); err != nil {
+			t.Fatal(err)
+		}
+		if len(diags) != 1 || diags[0].File != "a.go" {
+			t.Fatalf("json path = %+v, want a.go; output %s", diags, &stdout)
+		}
+	})
 }

@@ -47,7 +47,9 @@ goxlint resolves paths from the directory that `-C` selects. It searches for
 `.goxlintrc.json` from that directory. A relative `-c` path starts in that
 directory. Package patterns and file patterns start in that directory. A
 relative `--stdin-filename` starts in that directory. Output paths are relative
-to that directory. `goxlint init` writes `.goxlintrc.json` in that directory.
+to that directory. SARIF paths use the repository root. goxlint searches for
+that root from the directory that `-C` selects. Read [sarif](#sarif).
+`goxlint init` writes `.goxlintrc.json` in that directory.
 `goxlint rules` reads the configuration from that directory.
 
 `-C` selects a directory. `-c` selects a configuration file. You can put `-C`
@@ -239,8 +241,8 @@ valid. Without `--timing`, goxlint does not collect rule times.
 Diagnostic file paths use forward slashes (`/`) on every operating system,
 including Windows. Paths within the working directory are relative to it.
 The `-C` flag selects that directory.
-Other paths stay absolute, except in SARIF output. A directory named
-`..foo` inside the working directory also uses a relative path.
+Other paths stay absolute. For SARIF paths, read [sarif](#sarif). A directory
+named `..foo` inside the working directory also uses a relative path.
 
 ### default
 
@@ -358,10 +360,15 @@ entry has a file URI, a source range, and a unique ID within that result. Its
 `message.text` holds the related message when one is set. The array is absent
 when there are no related locations.
 
-SARIF file URIs are relative for files inside the working directory. A
-directory named `..foo` is inside the working directory. Files outside the
-working directory use an absolute `file:` URI on every operating system. URIs
-use `/` and escape special characters, for example a space becomes `%20`.
+SARIF file URIs are relative to the repository root. The repository root is
+the nearest parent directory that contains `.git`. `.git` can be a directory
+or a file. Git worktrees and submodules use a `.git` file. goxlint starts
+the search in the directory of the run. The `-C` flag selects that directory.
+When goxlint finds no `.git`, URIs are relative to that directory.
+
+A directory named `..foo` uses a relative URI when it is inside the root.
+Files outside the root use an absolute `file:` URI on every operating system.
+URIs use `/` and escape special characters. For example, a space becomes `%20`.
 
 Line and column numbers start at 1. The end position is exclusive. SARIF
 columns count Unicode code points. Other formats count bytes. Tabs count as
@@ -433,8 +440,12 @@ still fails in that case. Add `--deny-warnings` to make warnings fail the job.
 The repository must have code scanning available. For access requirements,
 read [Uploading a SARIF file to GitHub](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/integrate-with-existing-tools/upload-sarif-file).
 
-Run goxlint from the root directory of the repository when you upload SARIF
-to GitHub. GitHub reads the paths relative to the repository root. When the
-command starts in a subdirectory, give `-C` and the repository root. For
-example, a step with `working-directory: ./service` uses `-C ..`. Paths are
-then relative to the repository root.
+GitHub code scanning reads SARIF paths from the repository root. goxlint
+writes those paths when `.git` is in the directory of the run or in a parent
+directory. The `-C` flag selects the directory of the run. You can run
+goxlint in a subdirectory. A diagnostic for `handler.go` with
+`working-directory: ./service` uses the URI `service/handler.go`.
+`goxlint -C service` from the repository root uses the same URI.
+
+**CAUTION:** When goxlint finds no `.git`, paths stay relative to the
+directory of the run. Run goxlint from the repository root in that case.

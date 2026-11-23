@@ -374,7 +374,16 @@ func lint(args []string, stdin io.Reader, stdout, stderr io.Writer, reg *config.
 	if stdinFix {
 		diagnosticOut = stderr
 	}
-	p := &output.Printer{W: diagnosticOut, Format: *format, Color: colorEnabled(diagnosticOut), Root: cwd, Sources: sources}
+	// GitHub code scanning reads SARIF paths from the repository root.
+	// The search starts in the directory of the run, after -C.
+	// With no .git marker, keep that directory.
+	outputRoot := cwd
+	if *format == "sarif" {
+		if repo := repoRoot(cwd); repo != "" {
+			outputRoot = repo
+		}
+	}
+	p := &output.Printer{W: diagnosticOut, Format: *format, Color: colorEnabled(diagnosticOut), Root: outputRoot, Sources: sources}
 	// AllRules omits rules that only an override enables, and it still counts a
 	// rule that overrides disable for every file in the run.
 	rulesRun := enabledRules(files, selected, rulesFor)
@@ -558,6 +567,22 @@ func resolveRulesConfig(configPath, dir string, reg *config.Registry) (*config.R
 		return nil, err
 	}
 	return config.Resolve(cfg, reg, root)
+}
+
+// repoRoot returns the nearest directory at or above dir that contains .git.
+// A worktree or submodule has a .git file, not a .git directory.
+// The result is empty when no .git exists.
+func repoRoot(dir string) string {
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
 }
 
 // workingDir is the directory for this run. -C is resolved before config
