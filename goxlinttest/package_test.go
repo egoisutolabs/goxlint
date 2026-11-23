@@ -203,11 +203,7 @@ func TestRunPackageFailures(t *testing.T) {
 		runPackageFailure(t, scenario)
 		return
 	}
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, tc := range []struct{ name, message string }{
+	runIsolatedFailures(t, "TestRunPackageFailures", "GOXLINT_PACKAGE_FAILURE", []struct{ name, message string }{
 		{"related filename", `error 0: related 1: filename = "a/original.go", want "other.go"`},
 		{"related message", `error 0: related 1: message = "original declaration", want "other"`},
 		{"related line", "error 0: related 1: line = 3, want 4"},
@@ -238,10 +234,30 @@ func TestRunPackageFailures(t *testing.T) {
 		{"unknown file option", `FileOptions names unknown file "missing.go"`},
 		{"options encoding", "encoding options:"},
 		{"override encoding", "encoding options:"},
-	} {
+	})
+}
+
+// failingTestArgs re-runs one top-level test in this binary.
+// `go test -cover` stores counters for this process only. A child must get
+// -test.gocoverdir so the parent report includes paths that call t.Fatal.
+func failingTestArgs(testName string) []string {
+	args := []string{"-test.run=^" + testName + "$"}
+	if dir := os.Getenv("GOCOVERDIR"); dir != "" {
+		args = append(args, "-test.gocoverdir="+dir)
+	}
+	return args
+}
+
+func runIsolatedFailures(t *testing.T, testName, envKey string, cases []struct{ name, message string }) {
+	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd := exec.Command(executable, "-test.run=^TestRunPackageFailures$")
-			cmd.Env = append(os.Environ(), "GOXLINT_PACKAGE_FAILURE="+tc.name)
+			cmd := exec.Command(executable, failingTestArgs(testName)...)
+			cmd.Env = append(os.Environ(), envKey+"="+tc.name)
 			out, err := cmd.CombinedOutput()
 			if err == nil {
 				t.Fatalf("want failure containing %q; got success:\n%s", tc.message, out)
