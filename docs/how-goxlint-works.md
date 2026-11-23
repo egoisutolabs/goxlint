@@ -147,8 +147,10 @@ Found 2 warnings and 1 error.
 Finished in 412ms on 38 files with 6 rules using 8 threads (typed mode).
 ```
 
-The rule count is the number of rules that the top-level configuration
-enables. Rules that only an override enables are not in the count.
+The rule count is the number of different rules enabled for one or more files
+in the run. A rule that only an override enables is in the count when that
+rule is enabled for a file. A rule that overrides turn off for every file in
+the run is not in the count. The count is zero when the run has no files.
 
 ## Positions
 
