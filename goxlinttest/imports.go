@@ -213,8 +213,9 @@ func parseForLoad(fset *token.FileSet, filename string, src []byte) (*ast.File, 
 }
 
 // goListEnv is the environment for the go command. The last value of each
-// variable wins. GOPROXY and GOSUMDB stay off so the load does not use the
-// network. GOPACKAGESDRIVER=off forces the go command when a driver is
+// variable wins. GOPROXY=off and GOSUMDB=off keep the load off the network.
+// GONOPROXY=none stops a private module pattern from fetching that module
+// directly. GOPACKAGESDRIVER=off forces the go command when a driver is
 // installed. GOTOOLCHAIN=local keeps the toolchain that built the test.
 func goListEnv() []string {
 	env := os.Environ()
@@ -227,6 +228,7 @@ func goListEnv() []string {
 	}
 	return append(env,
 		"GOPROXY=off",
+		"GONOPROXY=none",
 		"GOSUMDB=off",
 		"GOPACKAGESDRIVER=off",
 	)

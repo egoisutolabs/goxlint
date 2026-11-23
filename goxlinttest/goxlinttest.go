@@ -19,7 +19,8 @@
 // Errors are relative to Code as written. Every case is type-checked, so code
 // must compile, apart from unused variables and imports.
 // Imported packages come from export data of the local toolchain, so a test
-// does not use the network. The Go build cache makes the next run fast.
+// does not use the network and does not download a private module. The Go
+// build cache makes the next run fast.
 // Use RunPackage to test several source files together as one package.
 package goxlinttest
 

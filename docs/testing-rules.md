@@ -137,6 +137,7 @@ These conditions apply to the `Code` field:
 - goxlinttest reads an imported package from export data.
 - The export data comes from the local Go toolchain.
 - goxlinttest does not use the network.
+- goxlinttest does not download a private module.
 - The Go build cache makes the next test run fast.
 - Each case is one file.
 
