@@ -18,7 +18,9 @@ This procedure makes a linter with one rule. The rule finds calls to
    ```
 
 You can also keep the linter in a separate module. goxlint does not need to be in
-the same module as the code that it examines.
+the same module as the code that it examines. From that module, use `-C` to
+lint the repository root. Read
+[Run from another directory](cli.md#run-from-another-directory).
 
 ## 2. Write a rule
 
@@ -194,3 +196,26 @@ For all test settings, read [Testing rules](testing-rules.md).
 - Read [Writing rules](writing-rules.md) for the complete rule API.
 - Add a fix to your rule. Read [Fixes](fixes.md).
 - Read the example plugins in [`examples/goxlint/plugins`](../examples/goxlint/plugins).
+- Install the agent skills. Read [Agent skills](#agent-skills).
+
+## Agent skills
+
+A coding agent can install instructions for goxlint from this repository.
+
+1. Install Node.js 22.20 or later.
+2. Run this command in the repository where the agent works:
+
+   ```sh
+   npx skills add egoisutolabs/goxlint
+   ```
+
+The command reads the skills in this repository. It does not add a Go
+dependency.
+
+`goxlint-setup` adds a linter command, `.goxlintrc.json`, a CI step, and an
+agent hook. `goxlint-write-rule` writes a rule from examples and
+counterexamples. To install one skill, add `--skill` and the skill name:
+
+```sh
+npx skills add egoisutolabs/goxlint --skill goxlint-setup
+```

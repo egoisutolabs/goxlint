@@ -91,7 +91,7 @@ The command was:
 go test ./internal/engine -run '^$' -bench 'BenchmarkLint' -benchmem -count=11 -benchtime=1s
 ```
 
-Each table uses the middle sample of the 11 samples, after sorting by time. The minimum and the maximum are the fastest and slowest of the 11 samples. Bytes and allocations come from that middle sample.
+Each table uses the middle sample of the 11 samples, after sorting by time. The minimum and the maximum are the fastest and slowest of the 11 samples. Bytes and allocations come from that middle sample. The run was on the engine before the use index and the concrete walk filter. The current engine allocates a use index for each file and leaves it unbuilt until a rule calls `UsesOf`. These benchmarks do not call `UsesOf`.
 
 **CAUTION:** These times come from one virtual machine. The host and the guest share the CPU. The minimum and the maximum show the range on that machine. Run the command again on your machine before you use a difference as evidence of an engine change.
 
