@@ -121,8 +121,8 @@ interface.
 goxlint.On(func(s ast.Stmt) { /* each statement */ })
 ```
 
-**CAUTION:** An interface handler makes goxlint visit every node of the file.
-This is slower. Use concrete node types when possible.
+Register a concrete node type when one node type is enough. An interface
+type matches every node type that implements it.
 
 ### No handlers
 

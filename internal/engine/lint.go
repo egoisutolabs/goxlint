@@ -119,6 +119,10 @@ type handler struct {
 	fn   func(ast.Node)
 }
 
+// observeWalk, when set, receives every node the walk callback sees.
+// Tests set it to check the type filter. It stays nil in normal runs.
+var observeWalk func(n ast.Node, push bool)
+
 // LintFile runs rules over f in a single AST walk and returns unsuppressed
 // diagnostics sorted by position.
 func LintFile(f File, rules []ConfiguredRule, opts LintOptions) []Diagnostic {
@@ -185,19 +189,15 @@ func lintFile(f File, rules []ConfiguredRule, opts LintOptions, timings map[stri
 			if h.Exit {
 				m = exit
 			}
-			m[h.NodeType] = append(m[h.NodeType], handler{rule: cr, fn: h.Fn})
-			if !seen[h.NodeType] {
-				seen[h.NodeType] = true
-				// SAFETY: NodeType is a concrete type from goxlint.On[N ast.Node], so it implements ast.Node.
-				filter = append(filter, reflect.Zero(h.NodeType).Interface().(ast.Node))
-			}
+			addHandler(m, seen, &filter, h.NodeType, handler{rule: cr, fn: h.Fn})
 		}
 	}
-	if len(filter) == 0 && len(ifaces) == 0 {
+	// Concrete handlers are already stored in rule order. Appending interface
+	// handlers after them keeps that order: for each node, concrete handlers
+	// run first, then interface handlers.
+	expandInterfaceHandlers(ifaces, enter, exit, seen, &filter)
+	if len(filter) == 0 {
 		return diags, opts
-	}
-	if len(ifaces) > 0 {
-		filter = nil // visit every node
 	}
 
 	failed := map[*ConfiguredRule]bool{}
@@ -215,6 +215,9 @@ func lintFile(f File, rules []ConfiguredRule, opts LintOptions, timings map[stri
 	}
 	inspector.New([]*ast.File{f.AST}).WithStack(filter, func(n ast.Node, push bool, s []ast.Node) bool {
 		stack = s
+		if observeWalk != nil {
+			observeWalk(n, push)
+		}
 		t := reflect.TypeOf(n)
 		hs := exit[t]
 		if push {
@@ -223,14 +226,36 @@ func lintFile(f File, rules []ConfiguredRule, opts LintOptions, timings map[stri
 		for _, h := range hs {
 			call(h, n)
 		}
-		for _, h := range ifaces {
-			if h.exit != push && t.Implements(h.iface) {
-				call(h.handler, n)
-			}
-		}
 		return true
 	})
 	return diags, opts
+}
+
+// expandInterfaceHandlers appends each interface handler to the concrete node
+// types that implement it. Expansion runs once per file, not once per node.
+func expandInterfaceHandlers(ifaces []ifaceHandler, enter, exit map[reflect.Type][]handler, seen map[reflect.Type]bool, filter *[]ast.Node) {
+	for _, ih := range ifaces {
+		m := enter
+		if ih.exit {
+			m = exit
+		}
+		for _, nodeType := range concreteNodeTypes {
+			if nodeType.Implements(ih.iface) {
+				addHandler(m, seen, filter, nodeType, ih.handler)
+			}
+		}
+	}
+}
+
+func addHandler(m map[reflect.Type][]handler, seen map[reflect.Type]bool, filter *[]ast.Node, nodeType reflect.Type, h handler) {
+	m[nodeType] = append(m[nodeType], h)
+	if seen[nodeType] {
+		return
+	}
+	seen[nodeType] = true
+	// SAFETY: nodeType is a concrete pointer type that implements ast.Node,
+	// either from goxlint.On or from concreteNodeTypes.
+	*filter = append(*filter, reflect.Zero(nodeType).Interface().(ast.Node))
 }
 
 type ifaceHandler struct {
